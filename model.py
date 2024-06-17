@@ -101,7 +101,7 @@ def get_batch(inputs):
 class Head(nn.Module):
     """one head of self-attention"""
 
-    def __init__(self, head_size, logger):
+    def __init__(self, head_size, log):
         super().__init__()
         self.key = nn.Linear(n_embd, head_size, bias=False)
         self.query = nn.Linear(n_embd, head_size, bias=False)
@@ -109,7 +109,7 @@ class Head(nn.Module):
         self.register_buffer('tril',
                 torch.tril(torch.ones(block_size, block_size)))
         self.dropout = nn.Dropout(dropout)
-        self.logger = logger
+        self.log = log
 
     def forward(self, x):
         # input of size (batch, time-step, embedding size)
@@ -123,7 +123,7 @@ class Head(nn.Module):
         # masking out future timepoints  # (B, T, T)
         #wei = wei.masked_fill(self.tril[:T, :T] == 0, float('-inf'))
         wei = F.softmax(wei, dim=-1) # (B, T, T)
-        self.logger.log_attention(wei)
+        self.log.log_attention(wei)
         wei = self.dropout(wei)
         # perform the weighted aggregation of the values
         v = self.value(x) # (B, T, hs)
@@ -134,10 +134,10 @@ class Head(nn.Module):
 class MultiHeadAttention(nn.Module):
     """multiple heads of self-attention in parallel"""
 
-    def __init__(self, num_heads, head_size, logger):
+    def __init__(self, num_heads, head_size, log):
         super().__init__()
         self.heads = nn.ModuleList(
-                [Head(head_size, logger) for _ in range(num_heads)])
+                [Head(head_size, log) for _ in range(num_heads)])
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
@@ -194,7 +194,7 @@ class WormTransformer(nn.Module):
         self.position_embedding_table.weight.requires_grad = False
 
         self.blocks = nn.Sequential(
-                *[Block(n_embd, n_head=n_head, logger=logger)
+                *[Block(n_embd, n_head=n_head, log=log)
                     for _ in range(n_layer)])
         # final layer norm: not used in our case
         self.ln_f = nn.LayerNorm(n_embd)
