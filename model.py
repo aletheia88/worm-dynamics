@@ -39,7 +39,7 @@ def batch_data(file_names):
     return data
 
 
-def initialize(inputs, attention_log_freq, loss_log_freq):
+def initialize(inputs, attention_log_freq):
 
     B, T, C = inputs.shape
     idx = random.choice(list(range(B)))
@@ -47,13 +47,14 @@ def initialize(inputs, attention_log_freq, loss_log_freq):
     positional_embeddings = torch.from_numpy(
         get_positional_encoding(T, C)).to(device)
 
-    logger = Log(attention_log_freq, loss_log_freq)
-    model = WormTransformer(positional_embeddings, logger).to(device)
+    log = Log(attention_log_freq)
+    model = WormTransformer(positional_embeddings, log).to(device)
 
     for param in model.parameters():
         param.data = param.data.double()
 
-    return model, logger
+    return model, log
+
 
 def get_positional_encoding(max_seq_length, d_model):
 
@@ -72,8 +73,25 @@ def get_positional_encoding(max_seq_length, d_model):
 
 def get_batch(inputs):
 
+    def normalize(embeddings):
+
+        normalized = np.zeros_like(embeddings, dtype=np.float32)
+        for idx in range(embeddings.shape[1]):
+            min_val = min(embeddings[:, idx])
+            max_val = max(embeddings[:, idx])
+            if min_val == max_val:
+                normalized[:, idx] = 0
+            else:
+                normalized[:, idx] = (embeddings[:, idx] - min_val) / (max_val
+                        - min_val) * 2 - 1
+
+        return normalized
+
     B, T, C = inputs.shape
     idx = random.choice(list(range(B)))
+    normalized_inputs = normalize(inputs[idx, :, :])
+    # negate the AVAL neuron
+    normalized_inputs[:, 0] = - normalized_inputs[:, 0]
     target_embeddings = inputs[idx, :, :].double().view(1, T, C).to(device)
     input_embeddings = inputs[idx, :, :].double().view(1, T, C).to(device)
 
@@ -147,12 +165,12 @@ class FeedFoward(nn.Module):
 class Block(nn.Module):
     """transformer block: communication followed by computation"""
 
-    def __init__(self, n_embd, n_head, logger):
+    def __init__(self, n_embd, n_head, log):
         # n_embd: embedding dimension
         # n_head: the number of heads we'd like
         super().__init__()
         head_size = n_embd // n_head
-        self.sa = MultiHeadAttention(n_head, head_size, logger)
+        self.sa = MultiHeadAttention(n_head, head_size, log)
         self.ffwd = FeedFoward(n_embd)
         self.ln1 = nn.LayerNorm(n_embd)
         self.ln2 = nn.LayerNorm(n_embd)
@@ -166,10 +184,10 @@ class Block(nn.Module):
 
 class WormTransformer(nn.Module):
 
-    def __init__(self, positional_embeddings, logger):
+    def __init__(self, positional_embeddings, log):
 
         super().__init__()
-        self.logger = logger
+        self.log = log
 
         self.position_embedding_table = nn.Embedding(block_size, n_embd)
         self.position_embedding_table.weight = nn.Parameter(positional_embeddings)
@@ -191,13 +209,14 @@ class WormTransformer(nn.Module):
         elif isinstance(module, nn.Embedding):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
-    def forward(self, input_embeddings, target_embeddings):
+    def forward(self, input_embeddings, target_embeddings, mask_index):
 
-        B, T, C = input_embeddings.shape 
+        B, T, C = input_embeddings.shape
         # idx and targets are both (B,T) tensor of integers
         # we take token embedding to be whole-brain activities at a particular time point
-        mask = torch.ones_like(input_embeddings[0, :, :])
-        mask[:, 1] = 0
+        mask = torch.ones((T, C)).to(device)
+        mask[:, mask_index] = 0
+
         input_emb = input_embeddings * mask
         pos_emb = self.position_embedding_table(
                 torch.arange(T, device=device)).clone() * mask
@@ -211,38 +230,72 @@ class WormTransformer(nn.Module):
             y = y.view(B*T, C)
             target_embeddings = target_embeddings.view(B*T, C)
             loss = F.mse_loss(y, target_embeddings)
-            #mse_col0 = F.mse_loss(y[:, 0], target_embeddings[:, 0])
-            #mse_col1 = F.mse_loss(y[:, 1], target_embeddings[:, 1])
-            #loss = mse_col0 + 10 * mse_col1 
-            #loss = F.mse_loss(y[:, 1], target_embeddings[:, 1])
 
         return y, loss
 
+@torch.no_grad()
+def estimate_loss():
 
-def main():
+    model.eval()
+    xb, yb = get_batch(valid_data)
+    y, valid_loss = model(xb, yb, mask_index=1)
+    log.iteration_logs[-1].valid_loss = valid_loss.item()
 
-    file_names = [
-        "2023-03-07-01_AVA.csv",
-        "2022-07-20-01_AVA.csv",
-        "2023-01-19-22_AVA.csv",
-        "2023-01-23-15_AVA.csv",
-    ]
-    data = batch_data(file_names)
-    max_iters = 5000
-    tensor_data = torch.tensor(data)
-    attention_log_freq, loss_log_freq = 100, 1
+    model.train()
 
-    model, logger = initialize(tensor_data, attention_log_freq, loss_log_freq)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
 
-    for num_iter in tqdm(range(max_iters)[:]):
+train_files = [
+    "2023-03-07-01_AVA.csv",
+    "2022-07-20-01_AVA.csv",
+    "2023-01-19-22_AVA.csv",
+    "2023-01-23-15_AVA.csv",
+]
+valid_files = [
+    "2023-01-19-01_AVA.csv",
+    "2022-06-14-13_AVA.csv",
+    "2022-08-02-01_AVA.csv",
+    "2022-06-28-07_AVA.csv",
+]
+test_files = [
+    "2022-07-15-06_AVA.csv",
+    "2022-07-15-12_AVA.csv",
+]
 
-        logger.log_iteration(num_iter)
-        xb, yb = get_batch(tensor_data)
-        y, loss = model(xb, yb)
-        optimizer.zero_grad(set_to_none=True)
-        loss.backward()
-        optimizer.step()
-        logger.log_loss(loss.item())
+train_data = batch_data(train_files)
+valid_data = batch_data(valid_files)
+test_data = batch_data(test_files)
+print(train_data.shape, valid_data.shape, test_data.shape)
 
-    return model, logger
+batch_size = 4
+max_iters = 5000
+eval_iters = 20
+
+head_size = 2
+block_size = 1600
+
+n_head = 1
+n_embd = 2
+n_layer = 3
+dropout = 0.5
+
+learning_rate = 3e-4
+device = "cuda:3"
+
+attention_log_freq, loss_log_freq = 100, 1
+
+model, log = initialize(torch.tensor(train_data), attention_log_freq)
+optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
+
+for num_iter in tqdm(range(max_iters)[:]):
+
+    log.log_iteration(num_iter)
+    xb, yb = get_batch(train_data)
+    y, loss = model(xb, yb, mask_index=1)
+    optimizer.zero_grad(set_to_none=True)
+    loss.backward()
+    optimizer.step()
+
+    log.iteration_logs[-1].train_loss = loss.item()
+    if num_iter % eval_iters == 0:
+        estimate_loss()
+
