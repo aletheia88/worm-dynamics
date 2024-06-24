@@ -10,28 +10,34 @@ import torch
 import torch.nn as nn
 from parameters import Parameters as ModelParameters
 
-class PositionalEmbeddings(nn.Module):
 
-    def __init__(self, parameters: ModelParameters):
+class Embeddings(nn.Module):
+
+    def __init__(self, parameters, mask_index):
         super().__init__()
         positional_embeddings = torch.zeros(parameters.block_size,
-                                            parameters.parameters.n_embd)
+                                                 parameters.n_embd)
         position = torch.arange(0, parameters.block_size,
                                 dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, parameters.parameters.n_embd, 2).float() *
-                             (-math.log(10000.0) / parameters.parameters.n_embd))
+        div_term = torch.exp(torch.arange(0, parameters.n_embd, 2).float() *
+                             (-math.log(10000.0) / parameters.n_embd))
         positional_embeddings[:, 0::2] = torch.sin(position * div_term)
         positional_embeddings[:, 1::2] = torch.cos(position * div_term)
         self.register_buffer("positional_embeddings", positional_embeddings)
 
-
-class MaskEmbeddings(nn.Module):
-
-    def __init__(self, parameters, mask_index):
-        super().__init__()
-        mask_embeddings = torch.ones(parameters.block_size, parameters.parameters.n_embd)
+        mask_embeddings = torch.ones(parameters.block_size, parameters.n_embd)
         mask_embeddings[:, mask_index] = 0
-        register_buffer("mask_embeddings", mask_embeddings)
+        self.register_buffer("mask_embeddings", mask_embeddings)
+
+        self.device = parameters.device
+
+    def update_mask_embeddings(self, new_mask_index):
+        self.mask_embeddings.data.fill_(1)
+        self.mask_embeddings.data[:, new_mask_index] = 0
+
+    def get_embeddings(self):
+        return self.positional_embeddings.to(self.device), \
+                self.mask_embeddings.to(self.device)
 
 
 class Head(nn.Module):
@@ -185,46 +191,54 @@ class WormTransformer(nn.Module):
 
         return y, loss
 
-train_files = [
-    "2023-03-07-01_AVA.csv",
-    "2022-07-20-01_AVA.csv",
-    "2023-01-19-22_AVA.csv",
-    "2023-01-23-15_AVA.csv",
-]
-dataset_paths = [f"/home/alicia/store1/alicia/transformer/{file}" for file in
-                 train_files]
-model_parameters = ModelParameters(
-        n_layer=1,
-        dropout=0.1,
-        learning_rate=3e-4,
-        max_iters=10,
-        eval_iters=10,
-        batch_size=1,
-        head_size=2,
-        block_size=1600,
-        n_embd=2,
-        ffwd_dim=4,
-        device="cuda:3")
 
-dataset = WormDataset(dataset_paths, model_parameters)
-dataloader = DataLoader(dataset,
-                        batch_size=model_parameters.batch_size,
-                        shuffle=True)
-attention_log_freq = 1
-log = Log(attention_log_freq) 
-model = WormTransformer(model_parameters, log).to(model_parameters.device)
-for param in model.parameters():
-    param.data = param.data.double()
-optimizer = torch.optim.AdamW(model.parameters(), lr=model_parameters.learning_rate)
+def test():
+    train_files = [
+        "2023-03-07-01_AVA.csv",
+        "2022-07-20-01_AVA.csv",
+        "2023-01-19-22_AVA.csv",
+        "2023-01-23-15_AVA.csv",
+    ]
+    dataset_paths = [f"/home/alicia/store1/alicia/transformer/{file}" for file in
+                     train_files]
+    model_parameters = ModelParameters(
+            n_layer=1,
+            dropout=0.1,
+            learning_rate=3e-4,
+            max_iters=10,
+            eval_iters=10,
+            batch_size=1,
+            head_size=2,
+            block_size=1600,
+            n_embd=2,
+            ffwd_dim=4,
+            device="cuda:3")
 
-for num_iter in tqdm(range(model_parameters.max_iters)):
+    dataset = WormDataset(dataset_paths, model_parameters)
+    dataloader = DataLoader(dataset,
+                            batch_size=model_parameters.batch_size,
+                            shuffle=True)
+    attention_log_freq = 1
+    log = Log(attention_log_freq) 
+    model = WormTransformer(model_parameters, log).to(model_parameters.device)
+    for param in model.parameters():
+        param.data = param.data.double()
+    optimizer = torch.optim.AdamW(model.parameters(),
+                                  lr=model_parameters.learning_rate)
 
-    for i, (inputs, target_embeddings) in enumerate(dataloader):
+    embed = Embeddings(model_parameters, mask_index=0)
 
-        log.log_iteration(num_iter)
-        y, loss = model(inputs, target_embeddings)
-        optimizer.zero_grad(set_to_none=True)
-        loss.backward()
-        optimizer.step()
-        log.iteration_logs[-1].train_loss = loss.item()
+    for num_iter in tqdm(range(model_parameters.max_iters)):
 
+        for i, (input_embeddings, target_embeddings) in enumerate(dataloader):
+
+            embed.update_mask_embeddings(random.choice([0, 1]))
+            positional_embeddings, mask_embeddings = embed.get_embeddings()
+            inputs = input_embeddings + positional_embeddings + mask_embeddings
+            log.log_iteration(num_iter)
+            y, loss = model(inputs, target_embeddings)
+            optimizer.zero_grad(set_to_none=True)
+            loss.backward()
+            optimizer.step()
+            log.iteration_logs[-1].train_loss = loss.item()
+test()
