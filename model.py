@@ -1,129 +1,76 @@
+from dataset import WormDataset
 from log import Log
 from torch.nn import functional as F
+from torch.utils.data import DataLoader
 from tqdm import tqdm
-import json
-import matplotlib.pyplot as plt
+import math
 import numpy as np
-import pandas as pd
 import random
 import torch
 import torch.nn as nn
+from parameters import Parameters as ModelParameters
 
-batch_size = 4
-head_size = 2
-block_size = 1600
+class PositionalEmbeddings(nn.Module):
 
-n_head = 1
-n_embd = 2
-n_layer = 2
-dropout = 0.2
-
-learning_rate = 3e-4
-device = "cuda:2"
-torch.manual_seed(42)
-
-def batch_data(file_names):
-
-    data_list = []
-
-    for idx, file_name in enumerate(file_names):
-        df = pd.read_csv(f"data/{file_name}")
-        AVAR = df.iloc[0].values[1:].astype(np.float64)
-        AVAL = np.array(df.columns.values[1:], dtype=np.float64)
-
-        combined_data = np.array([AVAL, AVAR]).T
-
-        data_list.append(combined_data)
-
-    data = np.stack(data_list, axis=0)
-    return data
+    def __init__(self, parameters: ModelParameters):
+        super().__init__()
+        positional_embeddings = torch.zeros(parameters.block_size,
+                                            parameters.parameters.n_embd)
+        position = torch.arange(0, parameters.block_size,
+                                dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, parameters.parameters.n_embd, 2).float() *
+                             (-math.log(10000.0) / parameters.parameters.n_embd))
+        positional_embeddings[:, 0::2] = torch.sin(position * div_term)
+        positional_embeddings[:, 1::2] = torch.cos(position * div_term)
+        self.register_buffer("positional_embeddings", positional_embeddings)
 
 
-def initialize(inputs, attention_log_freq):
+class MaskEmbeddings(nn.Module):
 
-    B, T, C = inputs.shape
-    idx = random.choice(list(range(B)))
-
-    positional_embeddings = torch.from_numpy(
-        get_positional_encoding(T, C)).to(device)
-
-    log = Log(attention_log_freq)
-    model = WormTransformer(positional_embeddings, log).to(device)
-
-    for param in model.parameters():
-        param.data = param.data.double()
-
-    return model, log
-
-
-def get_positional_encoding(max_seq_length, d_model):
-
-    position_embedding = np.zeros((max_seq_length, d_model))
-
-    for pos in range(max_seq_length):
-        for i in range(0, d_model, 2):
-            position_embedding[pos, i] = \
-                    np.sin(pos / (10000 ** ((2 * i) / d_model)))
-            if i + 1 < d_model:
-                position_embedding[pos, i + 1] = \
-                    np.cos(pos / (10000 ** ((2 * (i + 1)) / d_model)))
-
-    return position_embedding
-
-
-def get_batch(inputs):
-
-    def normalize(embeddings):
-
-        normalized = np.zeros_like(embeddings, dtype=np.float32)
-        for idx in range(embeddings.shape[1]):
-            min_val = min(embeddings[:, idx])
-            max_val = max(embeddings[:, idx])
-            if min_val == max_val:
-                normalized[:, idx] = 0
-            else:
-                normalized[:, idx] = (embeddings[:, idx] - min_val) / (max_val
-                        - min_val) * 2 - 1
-
-        return normalized
-
-    B, T, C = inputs.shape
-    idx = random.choice(list(range(B)))
-    normalized_inputs = normalize(inputs[idx, :, :])
-    # negate the AVAL neuron
-    normalized_inputs[:, 0] = - normalized_inputs[:, 0]
-    target_embeddings = inputs[idx, :, :].double().view(1, T, C).to(device)
-    input_embeddings = inputs[idx, :, :].double().view(1, T, C).to(device)
-
-    return input_embeddings, target_embeddings
+    def __init__(self, parameters, mask_index):
+        super().__init__()
+        mask_embeddings = torch.ones(parameters.block_size, parameters.parameters.n_embd)
+        mask_embeddings[:, mask_index] = 0
+        register_buffer("mask_embeddings", mask_embeddings)
 
 
 class Head(nn.Module):
+
     """one head of self-attention"""
 
-    def __init__(self, head_size, log):
+    def __init__(self, parameters: ModelParameters, log: Log):
         super().__init__()
-        self.key = nn.Linear(n_embd, head_size, bias=False)
-        self.query = nn.Linear(n_embd, head_size, bias=False)
-        self.value = nn.Linear(n_embd, head_size, bias=False)
+        self.key = nn.Linear(parameters.n_embd,
+                             parameters.head_size,
+                             bias=False)
+        self.query = nn.Linear(parameters.n_embd,
+                               parameters.head_size,
+                               bias=False)
+        self.value = nn.Linear(parameters.n_embd,
+                               parameters.head_size,
+                               bias=False)
         self.register_buffer('tril',
-                torch.tril(torch.ones(block_size, block_size)))
-        self.dropout = nn.Dropout(dropout)
+                torch.tril(torch.ones(parameters.block_size,
+                                      parameters.block_size)))
+        self.dropout = nn.Dropout(parameters.dropout)
         self.log = log
 
     def forward(self, x):
-        # input of size (batch, time-step, embedding size)
-        # output of size (batch, time-step, head size)
+        # input of size (batch_size, block_size, parameters.n_embd)
+        # output of size (batch_size, block_size, head_size)
         B, T, C = x.shape
-        k = self.key(x)   # (B, T, hs)
-        q = self.query(x) # (B, T, hs)
-        # compute attention scores ("affinities")
+        k = self.key(x)   # (B, T, head_size)
+        q = self.query(x) # (B, T, head_size)
         # (B, T, hs) @ (B, hs, T) -> (B, T, T)
         wei = q @ k.transpose(-2, -1) * k.shape[-1]**-0.5
         # masking out future timepoints  # (B, T, T)
         #wei = wei.masked_fill(self.tril[:T, :T] == 0, float('-inf'))
         wei = F.softmax(wei, dim=-1) # (B, T, T)
-        self.log.log_attention(wei)
+
+        if len(self.log.iteration_logs) > 0 and \
+            self.log.iteration_logs[-1].iteration % self.log.attention_log_freq == 0:
+                self.log.iteration_logs[-1].attention = wei
+
         wei = self.dropout(wei)
         # perform the weighted aggregation of the values
         v = self.value(x) # (B, T, hs)
@@ -132,13 +79,14 @@ class Head(nn.Module):
 
 
 class MultiHeadAttention(nn.Module):
+
     """multiple heads of self-attention in parallel"""
 
-    def __init__(self, num_heads, head_size, log):
+    def __init__(self, parameters: ModelParameters, log: Log):
         super().__init__()
         self.heads = nn.ModuleList(
-                [Head(head_size, log) for _ in range(num_heads)])
-        self.dropout = nn.Dropout(dropout)
+                [Head(parameters, log) for _ in range(parameters.n_head)])
+        self.dropout = nn.Dropout(parameters.dropout)
 
     def forward(self, x):
         out = torch.cat([h(x) for h in self.heads], dim=-1)
@@ -146,16 +94,19 @@ class MultiHeadAttention(nn.Module):
         return out
 
 
-class FeedFoward(nn.Module):
+class FeedForward(nn.Module):
+
     """a simple linear layer followed by a non-linearity"""
 
-    def __init__(self, n_embd):
+    def __init__(self, parameters: ModelParameters):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(n_embd, 4 * n_embd),
+            nn.Linear(parameters.n_embd,
+                      parameters.ffwd_dim * parameters.n_embd),
             nn.ReLU(),
-            nn.Linear(4 * n_embd, n_embd),
-            nn.Dropout(dropout),
+            nn.Linear(parameters.ffwd_dim * parameters.n_embd,
+                      parameters.n_embd),
+            nn.Dropout(parameters.dropout),
         )
 
     def forward(self, x):
@@ -163,41 +114,49 @@ class FeedFoward(nn.Module):
 
 
 class Block(nn.Module):
+
     """transformer block: communication followed by computation"""
 
-    def __init__(self, n_embd, n_head, log):
-        # n_embd: embedding dimension
-        # n_head: the number of heads we'd like
+    def __init__(self, parameters: ModelParameters, log: Log):
         super().__init__()
-        head_size = n_embd // n_head
-        self.sa = MultiHeadAttention(n_head, head_size, log)
-        self.ffwd = FeedFoward(n_embd)
-        self.ln1 = nn.LayerNorm(n_embd)
-        self.ln2 = nn.LayerNorm(n_embd)
+        self.soft_attention = MultiHeadAttention(parameters, log)
+        self.ffwd = FeedForward(parameters)
+        self.ln1 = nn.LayerNorm(parameters.n_embd)
+        self.ln2 = nn.LayerNorm(parameters.n_embd)
 
     def forward(self, x):
-        # residual blocks (aka. skip connections)
-        x = x + self.sa(x.double())
+        x = x + self.soft_attention(x.double())
         x = x + self.ffwd(self.ln2(x.double()))
         return x
 
 
+class MASELoss(nn.Module):
+
+    """mean absolute scaled error"""
+
+    def __init__(self):
+        super(MASELoss, self).__init__()
+
+    def forward(self, y_pred, y_true):
+
+        y_naive = torch.roll(y_true, shifts=1, dims=1)
+        y_naive[:, 0] = y_true[:, 0]
+
+        mean_naive_errors = torch.abs(y_true - y_naive).mean()
+        mean_prediction_errors = torch.abs(y_true - y_pred).mean()
+
+        return mean_prediction_errors / mean_naive_errors
+
 class WormTransformer(nn.Module):
 
-    def __init__(self, positional_embeddings, log):
+    def __init__(self, parameters, log):
 
         super().__init__()
         self.log = log
-
-        self.position_embedding_table = nn.Embedding(block_size, n_embd)
-        self.position_embedding_table.weight = nn.Parameter(positional_embeddings)
-        self.position_embedding_table.weight.requires_grad = False
-
         self.blocks = nn.Sequential(
-                *[Block(n_embd, n_head=n_head, log=log)
-                    for _ in range(n_layer)])
+                *[Block(parameters, log) for _ in range(parameters.n_layer)])
         # final layer norm: not used in our case
-        self.ln_f = nn.LayerNorm(n_embd)
+        self.ln_f = nn.LayerNorm(parameters.n_embd)
         self.apply(self._init_weights)
 
     def _init_weights(self, module):
@@ -209,19 +168,10 @@ class WormTransformer(nn.Module):
         elif isinstance(module, nn.Embedding):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
-    def forward(self, input_embeddings, target_embeddings, mask_index):
+    def forward(self, inputs, target_embeddings):
 
-        B, T, C = input_embeddings.shape
-        # idx and targets are both (B,T) tensor of integers
-        # we take token embedding to be whole-brain activities at a particular time point
-        mask = torch.ones((T, C)).to(device)
-        mask[:, mask_index] = 0
-
-        input_emb = input_embeddings * mask
-        pos_emb = self.position_embedding_table(
-                torch.arange(T, device=device)).clone() * mask
-        x = input_emb + pos_emb
-        y = self.blocks(x.view(B, T, C))
+        B, T, C = target_embeddings.shape
+        y = self.blocks(inputs.view(B, T, C))
 
         if target_embeddings is None:
             loss = None
@@ -229,20 +179,11 @@ class WormTransformer(nn.Module):
             B, T, C = y.shape
             y = y.view(B*T, C)
             target_embeddings = target_embeddings.view(B*T, C)
-            loss = F.mse_loss(y, target_embeddings)
+            mase_loss = MASELoss()
+            loss = mase_loss(y, target_embeddings)
+            #loss = F.mse_loss(y, target_embeddings)
 
         return y, loss
-
-@torch.no_grad()
-def estimate_loss():
-
-    model.eval()
-    xb, yb = get_batch(valid_data)
-    y, valid_loss = model(xb, yb, mask_index=1)
-    log.iteration_logs[-1].valid_loss = valid_loss.item()
-
-    model.train()
-
 
 train_files = [
     "2023-03-07-01_AVA.csv",
@@ -250,52 +191,40 @@ train_files = [
     "2023-01-19-22_AVA.csv",
     "2023-01-23-15_AVA.csv",
 ]
-valid_files = [
-    "2023-01-19-01_AVA.csv",
-    "2022-06-14-13_AVA.csv",
-    "2022-08-02-01_AVA.csv",
-    "2022-06-28-07_AVA.csv",
-]
-test_files = [
-    "2022-07-15-06_AVA.csv",
-    "2022-07-15-12_AVA.csv",
-]
+dataset_paths = [f"/home/alicia/store1/alicia/transformer/{file}" for file in
+                 train_files]
+model_parameters = ModelParameters(
+        n_layer=1,
+        dropout=0.1,
+        learning_rate=3e-4,
+        max_iters=10,
+        eval_iters=10,
+        batch_size=1,
+        head_size=2,
+        block_size=1600,
+        n_embd=2,
+        ffwd_dim=4,
+        device="cuda:3")
 
-train_data = batch_data(train_files)
-valid_data = batch_data(valid_files)
-test_data = batch_data(test_files)
-print(train_data.shape, valid_data.shape, test_data.shape)
+dataset = WormDataset(dataset_paths, model_parameters)
+dataloader = DataLoader(dataset,
+                        batch_size=model_parameters.batch_size,
+                        shuffle=True)
+attention_log_freq = 1
+log = Log(attention_log_freq) 
+model = WormTransformer(model_parameters, log).to(model_parameters.device)
+for param in model.parameters():
+    param.data = param.data.double()
+optimizer = torch.optim.AdamW(model.parameters(), lr=model_parameters.learning_rate)
 
-batch_size = 4
-max_iters = 5000
-eval_iters = 20
+for num_iter in tqdm(range(model_parameters.max_iters)):
 
-head_size = 2
-block_size = 1600
+    for i, (inputs, target_embeddings) in enumerate(dataloader):
 
-n_head = 1
-n_embd = 2
-n_layer = 3
-dropout = 0.5
-
-learning_rate = 3e-4
-device = "cuda:3"
-
-attention_log_freq, loss_log_freq = 100, 1
-
-model, log = initialize(torch.tensor(train_data), attention_log_freq)
-optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
-
-for num_iter in tqdm(range(max_iters)[:]):
-
-    log.log_iteration(num_iter)
-    xb, yb = get_batch(train_data)
-    y, loss = model(xb, yb, mask_index=1)
-    optimizer.zero_grad(set_to_none=True)
-    loss.backward()
-    optimizer.step()
-
-    log.iteration_logs[-1].train_loss = loss.item()
-    if num_iter % eval_iters == 0:
-        estimate_loss()
+        log.log_iteration(num_iter)
+        y, loss = model(inputs, target_embeddings)
+        optimizer.zero_grad(set_to_none=True)
+        loss.backward()
+        optimizer.step()
+        log.iteration_logs[-1].train_loss = loss.item()
 
