@@ -73,9 +73,11 @@ class Head(nn.Module):
         #wei = wei.masked_fill(self.tril[:T, :T] == 0, float('-inf'))
         wei = F.softmax(wei, dim=-1) # (B, T, T)
 
-        if len(self.log.iteration_logs) > 0 and \
-            self.log.iteration_logs[-1].iteration % self.log.attention_log_freq == 0:
-                self.log.iteration_logs[-1].attention = wei
+        if self.log.attention_log_freq is not None:
+            if len(self.log.iteration_logs) > 0 and \
+                self.log.iteration_logs[-1].iteration % \
+                self.log.attention_log_freq == 0:
+                    self.log.iteration_logs[-1].attention = wei
 
         wei = self.dropout(wei)
         # perform the weighted aggregation of the values
@@ -155,15 +157,16 @@ class MASELoss(nn.Module):
 
 class WormTransformer(nn.Module):
 
-    def __init__(self, parameters, log):
+    def __init__(self, model_parameters, log):
 
         super().__init__()
         self.log = log
         self.blocks = nn.Sequential(
-                *[Block(parameters, log) for _ in range(parameters.n_layer)])
+                *[Block(model_parameters, log) for _ in range(model_parameters.n_layer)])
         # final layer norm: not used in our case
-        self.ln_f = nn.LayerNorm(parameters.n_embd)
+        self.ln_f = nn.LayerNorm(model_parameters.n_embd)
         self.apply(self._init_weights)
+        self.model_parameters = model_parameters
 
     def _init_weights(self, module):
 
@@ -205,8 +208,8 @@ def test():
             n_layer=1,
             dropout=0.1,
             learning_rate=3e-4,
-            max_iters=10,
-            eval_iters=10,
+            max_epochs=10,
+            eval_epochs=10,
             batch_size=1,
             head_size=2,
             block_size=1600,
@@ -228,17 +231,16 @@ def test():
 
     embed = Embeddings(model_parameters, mask_index=0)
 
-    for num_iter in tqdm(range(model_parameters.max_iters)):
+    for num_epoch in tqdm(range(model_parameters.max_epochs)):
 
         for i, (input_embeddings, target_embeddings) in enumerate(dataloader):
 
             embed.update_mask_embeddings(random.choice([0, 1]))
             positional_embeddings, mask_embeddings = embed.get_embeddings()
             inputs = input_embeddings + positional_embeddings + mask_embeddings
-            log.log_iteration(num_iter)
+            log.log_iteration(num_epoch)
             y, loss = model(inputs, target_embeddings)
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
             optimizer.step()
             log.iteration_logs[-1].train_loss = loss.item()
-test()
