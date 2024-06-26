@@ -1,39 +1,52 @@
-from dataset import WormDataset
-from log import Log
 from torch.nn import functional as F
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+from wormtransformer.dataset import WormDataset
+from wormtransformer.log import Log
+from wormtransformer.parameters import Parameters as ModelParameters
 import math
 import numpy as np
 import random
 import torch
 import torch.nn as nn
-from parameters import Parameters as ModelParameters
 
 
 class Embeddings(nn.Module):
 
-    def __init__(self, parameters, mask_index):
+    def __init__(self, parameters):
         super().__init__()
+        """
         positional_embeddings = torch.zeros(parameters.block_size,
-                                                 parameters.n_embd)
+                                            parameters.n_embd)
         position = torch.arange(0, parameters.block_size,
                                 dtype=torch.float).unsqueeze(1)
         div_term = torch.exp(torch.arange(0, parameters.n_embd, 2).float() *
                              (-math.log(10000.0) / parameters.n_embd))
         positional_embeddings[:, 0::2] = torch.sin(position * div_term)
         positional_embeddings[:, 1::2] = torch.cos(position * div_term)
+        """
+        positional_embeddings = self.encode_positions(parameters)
         self.register_buffer("positional_embeddings", positional_embeddings)
-
-        mask_embeddings = torch.ones(parameters.block_size, parameters.n_embd)
-        mask_embeddings[:, mask_index] = 0
+        mask_embeddings = torch.zeros(parameters.block_size, parameters.n_embd)
         self.register_buffer("mask_embeddings", mask_embeddings)
 
         self.device = parameters.device
 
-    def update_mask_embeddings(self, new_mask_index):
-        self.mask_embeddings.data.fill_(1)
-        self.mask_embeddings.data[:, new_mask_index] = 0
+    def encode_positions(self, parameters):
+        positional_embeddings = np.zeros((parameters.block_size, parameters.n_embd))
+        for pos in range(parameters.block_size):
+            for i in range(0, parameters.n_embd, 2):
+                positional_embeddings[pos, i] = np.sin(
+                        pos / (10000 ** ((2 * i) / parameters.n_embd)))
+                if i + 1 < parameters.n_embd:
+                    positional_embeddings[pos, i + 1] = np.cos(
+                            pos / (10000 ** ((2 * (i + 1)) / parameters.n_embd)))
+
+        return torch.tensor(positional_embeddings)
+
+    def update_mask_embeddings(self, mask_index):
+        self.mask_embeddings.data.fill_(0.1)
+        self.mask_embeddings.data[:, mask_index] = 0
 
     def get_embeddings(self):
         return self.positional_embeddings.to(self.device), \
