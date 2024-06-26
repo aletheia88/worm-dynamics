@@ -1,5 +1,5 @@
-from parameters import Parameters
 from torch.utils.data import DataLoader, Dataset
+from wormtransformer.parameters import Parameters
 import numpy as np
 import pandas as pd
 import torch
