@@ -7,21 +7,23 @@ import torch
 
 class WormDataset(Dataset):
 
-    def __init__(self, dataset_paths, device):
+    def __init__(self, dataset_paths, device, shift=0):
 
         self.input_embeddings = torch.tensor(
-                self._assemble_data(dataset_paths), device=device)
+                self._assemble_data(dataset_paths, shift), device=device)
         self.target_embeddings = self.input_embeddings.clone()
 
-    def _assemble_data(self, dataset_paths):
+    def _assemble_data(self, dataset_paths, shift):
 
         assembled_dataset = []
         for dataset_path in dataset_paths:
             df = pd.read_csv(dataset_path)
-            AVAR = self._normalize(df.iloc[0].values[1:].astype(np.float64))
             AVAL = self._normalize(np.array(df.columns.values[1:],
                                             dtype=np.float64))
-            assembled_dataset.append(np.array([AVAL, AVAR]).T)
+            AVAR = self._normalize(df.iloc[0].values[1:].astype(np.float64))
+            AVAR_shifted = np.roll(AVAR, shift=shift)
+            assembled_dataset.append(np.array([AVAL[shift:],
+                                               AVAR_shifted[shift:]]).T)
 
         return np.stack(assembled_dataset, axis=0)
 
