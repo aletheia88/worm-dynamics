@@ -25,7 +25,7 @@ class Embeddings(nn.Module):
         positional_embeddings[:, 0::2] = torch.sin(position * div_term)
         positional_embeddings[:, 1::2] = torch.cos(position * div_term)
         """
-        positional_embeddings = self.encode_positions(parameters)
+        positional_embeddings = nn.Parameter(self.encode_positions(parameters))
         self.register_buffer("positional_embeddings", positional_embeddings)
         mask_embeddings = torch.zeros(parameters.block_size, parameters.n_embd)
         self.register_buffer("mask_embeddings", mask_embeddings)
@@ -140,13 +140,15 @@ class Block(nn.Module):
 
     def __init__(self, parameters: ModelParameters, log: Log):
         super().__init__()
-        self.soft_attention = MultiHeadAttention(parameters, log)
+        self.soft_attention_1 = MultiHeadAttention(parameters, log)
+        #self.soft_attention_2 = MultiHeadAttention(parameters, log)
         self.ffwd = FeedForward(parameters)
-        self.ln1 = nn.LayerNorm(parameters.n_embd)
+        #self.ln1 = nn.LayerNorm(parameters.n_embd)
         self.ln2 = nn.LayerNorm(parameters.n_embd)
 
     def forward(self, x):
-        x = x + self.soft_attention(x.double())
+        x = x + self.soft_attention_1(x.double())
+        #x = x + self.soft_attention_2(x)
         x = x + self.ffwd(self.ln2(x.double()))
         return x
 
