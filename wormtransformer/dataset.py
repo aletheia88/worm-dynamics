@@ -19,8 +19,8 @@ class WormDataset(Dataset):
         for dataset_path in dataset_paths:
             df = pd.read_csv(dataset_path)
             AVAL = self._normalize(np.array(df.columns.values[1:],
-                                            dtype=np.float64))
-            AVAR = self._normalize(df.iloc[0].values[1:].astype(np.float64))
+                                            dtype=np.float32))
+            AVAR = self._normalize(df.iloc[0].values[1:].astype(np.float32))
             AVAR_shifted = np.roll(AVAR, shift=shift)
             assembled_dataset.append(np.array([AVAL[shift:],
                                                AVAR_shifted[shift:]]).T)
