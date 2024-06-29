@@ -140,16 +140,21 @@ class Block(nn.Module):
 
     def __init__(self, parameters: ModelParameters, log: Log):
         super().__init__()
-        self.soft_attention_1 = MultiHeadAttention(parameters, log)
-        #self.soft_attention_2 = MultiHeadAttention(parameters, log)
+        self.proj = nn.Linear(parameters.n_embd, parameters.n_embd)
+        self.sa1 = MultiHeadAttention(parameters, log)
+        #self.sa2 = MultiHeadAttention(parameters, log)
         self.ffwd = FeedForward(parameters)
+        self.bn = nn.BatchNorm1d(parameters.block_size)
         #self.ln1 = nn.LayerNorm(parameters.n_embd)
-        self.ln2 = nn.LayerNorm(parameters.n_embd)
+        #self.ln2 = nn.LayerNorm(parameters.n_embd)
 
     def forward(self, x):
-        x = x + self.soft_attention_1(x.double())
-        #x = x + self.soft_attention_2(x)
-        x = x + self.ffwd(self.ln2(x.double()))
+        # (1600, 2) x (2, 2) -> (1600, 2)
+        x = self.proj(x.float())
+        # (1600, 2) -> (1600, 2)
+        x = x + self.sa1(x.float())
+        #x = x + self.sa2(x.float())
+        x = x + self.ffwd(self.bn(x.float()))
         return x
 
 
@@ -169,6 +174,7 @@ class MASELoss(nn.Module):
         mean_prediction_errors = torch.abs(y_true - y_pred).mean()
 
         return mean_prediction_errors / mean_naive_errors
+
 
 class WormTransformer(nn.Module):
 
@@ -217,45 +223,86 @@ def test():
         "2023-01-19-22_AVA.csv",
         "2023-01-23-15_AVA.csv",
     ]
-    dataset_paths = [f"/home/alicia/store1/alicia/transformer/{file}" for file in
-                     train_files]
+    train_paths = [f"/home/alicia/store1/alicia/transformer/{file}" for file in
+                   train_files]
+
+    valid_files = [
+        "2023-01-19-01_AVA.csv",
+        "2022-06-14-13_AVA.csv",
+        "2022-08-02-01_AVA.csv",
+        "2022-06-28-07_AVA.csv",
+    ]
+    valid_paths = [f"/home/alicia/store1/alicia/transformer/{file}" for file in
+                   valid_files]
+
+    time_shift = 0 # shift AVAR
+
     model_parameters = ModelParameters(
             n_layer=1,
             dropout=0.1,
-            learning_rate=3e-4,
-            max_epochs=10,
-            eval_epochs=10,
+            learning_rate=3e-3,
+            max_epochs=1000,
+            eval_epochs=1,
             batch_size=1,
             head_size=2,
-            block_size=1600,
+            block_size=1600-time_shift,
             n_embd=2,
             ffwd_dim=4,
             device="cuda:3")
 
-    dataset = WormDataset(dataset_paths, model_parameters)
-    dataloader = DataLoader(dataset,
-                            batch_size=model_parameters.batch_size,
-                            shuffle=True)
-    attention_log_freq = 1
-    log = Log(attention_log_freq) 
-    model = WormTransformer(model_parameters, log).to(model_parameters.device)
+    train_set = WormDataset(train_paths, model_parameters.device,
+                            shift=time_shift)
+    train_dataloader = DataLoader(
+        train_set,
+        batch_size=model_parameters.batch_size,
+        shuffle=True)
+
+    valid_set = WormDataset(valid_paths, model_parameters.device,
+                            shift=time_shift)
+    valid_dataloader = DataLoader(
+        valid_set,
+        batch_size=model_parameters.batch_size,
+        shuffle=False)
+
+    model = WormTransformer(
+        model_parameters,
+        Log(attention_log_freq=None)).to(model_parameters.device)
+
     for param in model.parameters():
-        param.data = param.data.double()
+        param.data = param.data.float()
+
     optimizer = torch.optim.AdamW(model.parameters(),
                                   lr=model_parameters.learning_rate)
 
-    embed = Embeddings(model_parameters, mask_index=0)
+    embed = Embeddings(model_parameters)
 
-    for num_epoch in tqdm(range(model_parameters.max_epochs)):
+    mask_index = random.choice([0, 1])
 
-        for i, (input_embeddings, target_embeddings) in enumerate(dataloader):
+    for n_epoch in tqdm(range(model_parameters.max_epochs)):
 
-            embed.update_mask_embeddings(random.choice([0, 1]))
+        model.log.log_iteration(n_epoch, train_loss=0.0)
+
+        for i, (input_embeddings, target_embeddings) in \
+            enumerate(train_dataloader):
+
+            embed.update_mask_embeddings(mask_index)
             positional_embeddings, mask_embeddings = embed.get_embeddings()
-            inputs = input_embeddings + positional_embeddings + mask_embeddings
-            log.log_iteration(num_epoch)
+            input_embeddings[0, :, mask_index] = 0
+
+            inputs = input_embeddings + positional_embeddings
+
             y, loss = model(inputs, target_embeddings)
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
             optimizer.step()
-            log.iteration_logs[-1].train_loss = loss.item()
+
+            model.log.iteration_logs[-1].train_loss += loss.item()
+
+        model.log.iteration_logs[-1].train_loss /= \
+                            len(train_dataloader.dataset)
+
+        # if n_epoch % model_parameters.eval_epochs == 0:
+        #     get_validation_loss(model, valid_dataloader, embed)
+
+if __name__ == "__main__":
+    test()
