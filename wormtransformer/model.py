@@ -68,11 +68,19 @@ class Head(nn.Module):
         self.value = nn.Linear(parameters.n_embd,
                                parameters.head_size,
                                bias=False)
-        self.register_buffer('tril',
-                torch.tril(torch.ones(parameters.block_size,
-                                      parameters.block_size)))
         self.dropout = nn.Dropout(parameters.dropout)
         self.log = log
+        self.register_buffer('mask', self._get_attention_mask(parameters))
+
+    def _get_attention_mask(self, parameters):
+        num_time_points = parameters.block_size
+        attention_span = parameters.attention_span
+        mask = torch.zeros(num_time_points, num_time_points)
+        for i in range(num_time_points):
+            start = max(0, i - attention_span)
+            end = min(num_time_points, i + attention_span + 1)
+            mask[i, start:end] = 1
+        return mask
 
     def forward(self, x):
         # input of size (batch_size, block_size, parameters.n_embd)
@@ -82,8 +90,7 @@ class Head(nn.Module):
         q = self.query(x) # (B, T, head_size)
         # (B, T, hs) @ (B, hs, T) -> (B, T, T)
         wei = q @ k.transpose(-2, -1) * k.shape[-1]**-0.5
-        # masking out future timepoints  # (B, T, T)
-        #wei = wei.masked_fill(self.tril[:T, :T] == 0, float('-inf'))
+        wei = wei.masked_fill(self.mask[:T, :T] == 0, float('-inf'))
         wei = F.softmax(wei, dim=-1) # (B, T, T)
 
         if self.log.attention_log_freq is not None:
@@ -248,6 +255,7 @@ def test():
             block_size=1600-time_shift,
             n_embd=2,
             ffwd_dim=4,
+            attention_span=10,
             device="cuda:3")
 
     train_set = WormDataset(train_paths, model_parameters.device,

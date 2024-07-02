@@ -12,6 +12,7 @@ class Parameters():
             block_size,
             n_embd,
             ffwd_dim,
+            attention_span,
             device):
 
         self.n_head = int(n_embd / head_size)
@@ -25,4 +26,5 @@ class Parameters():
         self.block_size = block_size
         self.n_embd = n_embd
         self.ffwd_dim = ffwd_dim
+        self.attention_span = attention_span
         self.device = device
