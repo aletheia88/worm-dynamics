@@ -1,8 +1,8 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="wormtransformer",
-    version="0.2",
+    name="wormdynamics",
+    version="0.1",
     packages=find_packages(),
     author="Alicia Lu",
     author_email="alicialu@mit.edu",
