@@ -4,8 +4,8 @@ import glob
 import json
 import numpy as np
 import pandas as pd
+import random
 import torch
-
 
 class WormDataset(Dataset):
 
@@ -13,25 +13,15 @@ class WormDataset(Dataset):
 
         self.shift = shift
         self.neuron_id_per_dataset = self._map_neurons(dataset_paths)
-        self.dataset_paths = self._filter_datasets(dataset_paths)
+        self.dataset_paths = self._filter_datasets(dataset_paths, take_all=True)
         self.input_embeddings = torch.tensor(
-                self._assemble_data(), device=device)
+                self.assemble_shuffled_neural_behavior_data(True, False, False), device=device)
         self.target_embeddings = self.input_embeddings.clone()
-    """def _assemble_data(self, dataset_paths, shift):
 
-        assembled_dataset = []
-        for dataset_path in dataset_paths:
-            df = pd.read_csv(dataset_path)
-            AVAL = self._normalize(np.array(df.columns.values[1:],
-                                            dtype=np.float32))
-            AVAR = self._normalize(df.iloc[0].values[1:].astype(np.float32))
-            AVAR_shifted = np.roll(AVAR, shift=shift)
-            assembled_dataset.append(np.array([AVAL[shift:],
-                                               AVAR_shifted[shift:]]).T)
+    def _filter_datasets(self, dataset_paths, take_all):
 
-        return np.stack(assembled_dataset, axis=0)"""
-
-    def _filter_datasets(self, dataset_paths):
+        if take_all:
+            return dataset_paths
 
         filtered_dataset_paths = []
         for dataset_path in dataset_paths:
@@ -57,7 +47,7 @@ class WormDataset(Dataset):
         return neuron_id_per_dataset
 
     def _assemble_data(self,):
-
+        """ neural activities of AVAL and AVAR """
         assembled_dataset = []
         for dataset_path in self.dataset_paths:
 
@@ -71,6 +61,87 @@ class WormDataset(Dataset):
             AVAR_shifted = np.roll(AVAR, shift=self.shift)
             assembled_dataset.append(np.array([AVAL[self.shift:],
                                                AVAR_shifted[self.shift:]]).T)
+
+        return np.stack(assembled_dataset, axis=0)
+
+    def assemble_neural_behavior_data(self,):
+        """ neural activities of AVAL/AVAR and velocity """
+
+        assembled_dataset = []
+        for dataset_path in self.dataset_paths:
+
+            dataset_name = dataset_path.split("/")[-1].split('.')[0]
+            with open(dataset_path, "r") as f:
+                data = json.load(f)
+                trace = np.array(data["trace_array"], dtype=np.float32).T
+                behavior = np.array(data["velocity"], dtype=np.float32)
+            id_dict = self.neuron_id_per_dataset[dataset_name]
+            if len(id_dict) == 2:
+                AVA_id = random.choice(list(id_dict.values()))
+            elif len(id_dict) == 1:
+                AVA_id = list(id_dict.values())[0]
+            AVA = self._normalize(trace[:1600, AVA_id])
+            velocity = self._normalize(behavior[:1600])
+            assembled_dataset.append(np.array([AVA, velocity]).T)
+
+        return np.stack(assembled_dataset, axis=0)
+
+    def assemble_shuffled_neural_behavior_data(
+            self,
+            shuffle_animal,
+            shuffle_trace,
+            shuffle_behavior):
+        """ create datasets with shuffled neural activities or behaviors """
+
+        assembled_dataset = []
+        for i, dataset_path in enumerate(self.dataset_paths):
+
+            dataset_name = dataset_path.split("/")[-1].split('.')[0]
+            id_dict = self.neuron_id_per_dataset[dataset_name]
+            if len(id_dict) == 2:
+                AVA_id = random.choice(list(id_dict.values()))
+            elif len(id_dict) == 1:
+                AVA_id = list(id_dict.values())[0]
+
+            if not shuffle_animal:
+                with open(dataset_path, "r") as f:
+                    data = json.load(f)
+                    trace = np.array(data["trace_array"], dtype=np.float32).T
+                    behavior = np.array(data["velocity"], dtype=np.float32)
+
+                AVA = trace[:1600, AVA_id]
+
+                if shuffle_trace:
+                    AVA = random.shuffle(AVA)
+                elif shffle_behavior:
+                    behavior = random.shuffle(behavior)
+                else:
+                    raise NotImplementedError(
+                    "either shuffle trace or shuffle behavior")
+            else:
+                if not shuffle_trace and not shuffle_behavior:
+                    if i == len(self.dataset_paths) - 1:
+                        j = 0
+                    else:
+                        j = i + 1
+                    dataset_path2 = self.dataset_paths[j]
+                    with open(dataset_path, "r") as f:
+                        data = json.load(f)
+                        trace = np.array(data["trace_array"],
+                                         dtype=np.float32).T
+                    AVA = trace[:1600, AVA_id]
+
+                    with open(dataset_path2, "r") as f:
+                        data = json.load(f)
+                        behavior = np.array(data["velocity"], dtype=np.float32)
+                else:
+                    raise NotImplementedError(
+                    "no need to shuffle trace or behavior")
+
+            # normalize neural and behavior activities
+            AVA = self._normalize(AVA)
+            velocity = self._normalize(behavior[:1600])
+            assembled_dataset.append(np.array([AVA, velocity]).T)
 
         return np.stack(assembled_dataset, axis=0)
 
