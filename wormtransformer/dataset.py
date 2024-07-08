@@ -7,6 +7,7 @@ import pandas as pd
 import random
 import torch
 
+
 class WormDataset(Dataset):
 
     def __init__(self, dataset_paths, device, shift=0):
@@ -15,7 +16,7 @@ class WormDataset(Dataset):
         self.neuron_id_per_dataset = self._map_neurons(dataset_paths)
         self.dataset_paths = self._filter_datasets(dataset_paths, take_all=True)
         self.input_embeddings = torch.tensor(
-                self.assemble_shuffled_neural_behavior_data(True, False, False), device=device)
+                self.assemble_shuffled_neural_behavior_data(False, False, True), device=device)
         self.target_embeddings = self.input_embeddings.clone()
 
     def _filter_datasets(self, dataset_paths, take_all):
@@ -46,7 +47,7 @@ class WormDataset(Dataset):
                             int(n_id) - 1
         return neuron_id_per_dataset
 
-    def _assemble_data(self,):
+    def assemble_data(self,):
         """ neural activities of AVAL and AVAR """
         assembled_dataset = []
         for dataset_path in self.dataset_paths:
@@ -112,9 +113,9 @@ class WormDataset(Dataset):
                 AVA = trace[:1600, AVA_id]
 
                 if shuffle_trace:
-                    AVA = random.shuffle(AVA)
-                elif shffle_behavior:
-                    behavior = random.shuffle(behavior)
+                    random.shuffle(AVA)
+                elif shuffle_behavior:
+                    random.shuffle(behavior)
                 else:
                     raise NotImplementedError(
                     "either shuffle trace or shuffle behavior")
