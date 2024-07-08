@@ -1,5 +1,5 @@
 from torch.utils.data import DataLoader, Dataset
-from wormtransformer.parameters import Parameters
+from wormdynamics.parameters import Parameters
 import glob
 import json
 import numpy as np

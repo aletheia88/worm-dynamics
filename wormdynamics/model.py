@@ -1,9 +1,9 @@
 from torch.nn import functional as F
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from wormtransformer.dataset import WormDataset
-from wormtransformer.log import Log
-from wormtransformer.parameters import Parameters as ModelParameters
+from wormdynamics.dataset import WormDataset
+from wormdynamics.log import Log
+from wormdynamics.parameters import Parameters as ModelParameters
 import math
 import numpy as np
 import random
@@ -25,8 +25,8 @@ class Embeddings(nn.Module):
         positional_embeddings[:, 0::2] = torch.sin(position * div_term)
         positional_embeddings[:, 1::2] = torch.cos(position * div_term)
         """
-        positional_embeddings = nn.Parameter(self.encode_positions(parameters))
-        self.register_buffer("positional_embeddings", positional_embeddings)
+        self.positional_embeddings = nn.Parameter(self.encode_positions(parameters))
+        #self.register_buffer("positional_embeddings", positional_embeddings)
         mask_embeddings = torch.zeros(parameters.block_size, parameters.n_embd)
         self.register_buffer("mask_embeddings", mask_embeddings)
 
@@ -192,7 +192,7 @@ class WormTransformer(nn.Module):
         self.blocks = nn.Sequential(
                 *[Block(model_parameters, log) for _ in range(model_parameters.n_layer)])
         # final layer norm: not used in our case
-        self.ln_f = nn.LayerNorm(model_parameters.n_embd)
+        #self.ln_f = nn.LayerNorm(model_parameters.n_embd)
         self.apply(self._init_weights)
         self.model_parameters = model_parameters
 
@@ -215,10 +215,11 @@ class WormTransformer(nn.Module):
         else:
             B, T, C = y.shape
             y = y.view(B*T, C)
+            #y = self.ln_f(y)
             target_embeddings = target_embeddings.view(B*T, C)
-            mase_loss = MASELoss()
-            loss = mase_loss(y, target_embeddings)
-            #loss = F.mse_loss(y, target_embeddings)
+            #mase_loss = MASELoss()
+            #loss = mase_loss(y, target_embeddings)
+            loss = F.mse_loss(y, target_embeddings)
 
         return y, loss
 
@@ -248,7 +249,7 @@ def test():
             n_layer=1,
             dropout=0.1,
             learning_rate=3e-3,
-            max_epochs=1000,
+            max_epochs=100,
             eval_epochs=1,
             batch_size=1,
             head_size=2,

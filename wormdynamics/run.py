@@ -1,9 +1,9 @@
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from wormtransformer.dataset import WormDataset
-from wormtransformer.log import Log
-from wormtransformer.model import WormTransformer, Embeddings
-from wormtransformer.parameters import Parameters as ModelParameters
+from wormdynamics.dataset import WormDataset
+from wormdynamics.log import Log
+from wormdynamics.model import WormTransformer, Embeddings
+from wormdynamics.parameters import Parameters as ModelParameters
 import random
 import torch
 
@@ -22,10 +22,10 @@ def get_validation_loss(
 
             embed.update_mask_embeddings(random.choice([0, 1]))
             positional_embeddings, mask_embeddings = embed.get_embeddings()
-            
+
             mask_index = random.choice([0, 1])
             input_embeddings[0, :, mask_index] = 0
-            
+
             inputs = input_embeddings + positional_embeddings + mask_embeddings
             y, valid_loss = model(inputs, target_embeddings)
             model.log.iteration_logs[-1].valid_loss += valid_loss.item()
@@ -97,19 +97,19 @@ for n_epoch in tqdm(range(model_parameters.max_epochs)):
 
         embed.update_mask_embeddings(random.choice([0, 1]))
         positional_embeddings, mask_embeddings = embed.get_embeddings()
-        
+
         mask_index = random.choice([0, 1])
         input_embeddings[0, :, mask_index] = 0
-        
+
         inputs = input_embeddings + positional_embeddings + mask_embeddings
 
         y, loss = model(inputs, target_embeddings)
         optimizer.zero_grad(set_to_none=True)
         loss.backward()
         optimizer.step()
-        
+
         model.log.iteration_logs[-1].train_loss += loss.item()
-        
+
     model.log.iteration_logs[-1].train_loss /= \
                         len(train_dataloader.dataset)
 

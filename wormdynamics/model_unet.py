@@ -5,7 +5,7 @@ Adapted by: Alicia Lu
 Date: 2024-07-04 """
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from wormtransformer.dataset import WormDataset
+from wormdynamics.dataset import WormDataset
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -60,23 +60,30 @@ class UNET(nn.Module):
 
         for down in self.downs:
             x = down(x)
+            #print(f"down: {x.shape}")
             skip_connections.append(x)
             x = self.pool(x)
+            #print(f"pool: {x.shape}")
 
         x = self.bottleneck(x)
+        #print(f"bottleneck: {x.shape}")
         skip_connections = skip_connections[::-1]
 
         for idx in range(0, len(self.ups), 2):
             x = self.ups[idx](x)
+            #print(f"up: {x.shape}")
             skip_connection = skip_connections[idx//2]
-
+            #print(f"skip_connection: {skip_connection.shape}")
             if x.shape != skip_connection.shape:
                 x = TF.resize(x, size=skip_connection.shape[2:])
 
             concat_skip = torch.cat((skip_connection, x), dim=1)
+            #print(f"concat_skip: {concat_skip.shape}")
             x = self.ups[idx+1](concat_skip)
+            #print(f"up: {x.shape}")
 
         pred = self.final_conv(x)
+        #print(f"final: {pred.shape}")
         if targets is None:
             loss = None
         else:
@@ -137,8 +144,8 @@ class UNet1D(nn.Module):
         return x
 
 def testUNET():
-    x = torch.randn((1, 2, 1500))
-    y = torch.randn((1, 2, 1500))
+    x = torch.randn((1, 2, 1200))
+    y = torch.randn((1, 2, 1200))
     model = UNET(in_channels=2, out_channels=2)
     preds, loss = model(x, y)
     print(preds.shape)

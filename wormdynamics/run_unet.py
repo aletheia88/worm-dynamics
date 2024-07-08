@@ -1,8 +1,8 @@
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from wormtransformer.dataset import WormDataset
-from wormtransformer.log import Log
-from wormtransformer.model_unet import UNET
+from wormdynamics.dataset import WormDataset
+from wormdynamics.log import Log
+from wormdynamics.model_unet import UNET
 import glob
 import matplotlib.pyplot as plt
 import random

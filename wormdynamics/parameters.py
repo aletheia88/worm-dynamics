@@ -28,3 +28,10 @@ class Parameters():
         self.ffwd_dim = ffwd_dim
         self.attention_span = attention_span
         self.device = device
+
+
+class UNetParameters():
+
+    def __init__(self):
+        pass
+

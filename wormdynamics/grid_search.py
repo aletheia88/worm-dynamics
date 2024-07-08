@@ -1,10 +1,10 @@
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from typing import List
-from wormtransformer.dataset import WormDataset
-from wormtransformer.log import Log
-from wormtransformer.model import WormTransformer, Embeddings
-from wormtransformer.parameters import Parameters as ModelParameters
+from wormdynamics.dataset import WormDataset
+from wormdynamics.log import Log
+from wormdynamics.model import WormTransformer, Embeddings
+from wormdynamics.parameters import Parameters as ModelParameters
 import itertools
 import random
 import torch
