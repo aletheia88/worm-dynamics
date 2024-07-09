@@ -10,13 +10,18 @@ import torch
 
 class WormDataset(Dataset):
 
-    def __init__(self, dataset_paths, device, shift=0):
+    def __init__(self, dataset_paths, device, num_to_augment=0, shift=0):
 
         self.shift = shift
         self.neuron_id_per_dataset = self._map_neurons(dataset_paths)
         self.dataset_paths = self._filter_datasets(dataset_paths, take_all=True)
+        """self.input_embeddings = torch.tensor(
+                self.assemble_shuffled_neural_behavior_data(
+                    False, False, True),
+                    device=device)"""
         self.input_embeddings = torch.tensor(
-                self.assemble_shuffled_neural_behavior_data(False, False, True), device=device)
+                self.assemble_augmented_data(num_to_augment),
+                device=device)
         self.target_embeddings = self.input_embeddings.clone()
 
     def _filter_datasets(self, dataset_paths, take_all):
@@ -146,6 +151,57 @@ class WormDataset(Dataset):
 
         return np.stack(assembled_dataset, axis=0)
 
+    def assemble_augmented_data(self, num_to_augment):
+        """ combine original traces and behaviors with their augmentations """
+
+        if num_to_augment == 0:
+            return self.assemble_neural_behavior_data()
+        elif num_to_augment > 0:
+            orignal_data = self.assemble_neural_behavior_data()
+            augmented_data = self._augment(num_to_augment)
+            return np.vstack((orignal_data, augmented_data))
+        else:
+            ValueError("num to augment cannot be negative")
+
+    def _augment(self, num_to_augment):
+        """ augment a chosen number of datasets by adding noise """
+
+        assembled_dataset = []
+        dataset_paths = random.sample(self.dataset_paths, num_to_augment)
+        gfp_dataset_name = random.choice(
+                ["2022-01-07-03", "2022-03-16-01", "2022-03-16-02"])
+        gfp_dataset_path = \
+        f"{dataset_paths[0].split('AVA')[0]}/GFP/{gfp_dataset_name}.json"
+
+        with open(gfp_dataset_path, "r") as f:
+            data = json.load(f)
+            gfp_stdev = np.std(np.array(data["trace_array"],
+                                        dtype=np.float32).T)
+
+        for dataset_path in dataset_paths:
+
+            with open(dataset_path, "r") as f:
+                data = json.load(f)
+                trace = np.array(data["trace_array"], dtype=np.float32).T
+                behavior = np.array(data["velocity"], dtype=np.float32)
+
+            if behavior.shape[0] < 1600:
+                continue
+
+            dataset_name = dataset_path.split("/")[-1].split('.')[0]
+            id_dict = self.neuron_id_per_dataset[dataset_name]
+            if len(id_dict) == 2:
+                AVA_id = random.choice(list(id_dict.values()))
+            elif len(id_dict) == 1:
+                AVA_id = list(id_dict.values())[0]
+
+            AVA = self._normalize(trace[:1600, AVA_id] + \
+                    0.12 * np.random.normal(0, gfp_stdev, (1600,)))
+            velocity = self._normalize(behavior[:1600])
+            assembled_dataset.append(np.array([AVA, velocity]).T)
+
+        return np.stack(assembled_dataset, axis=0)
+
     def _normalize(self, data):
         return (data - data.min()) / (data.max() - data.min()) * 2 - 1
 
@@ -158,23 +214,6 @@ class WormDataset(Dataset):
         return len(self.input_embeddings)
 
 def test():
-    train_files = [
-        "2023-03-07-01_AVA.csv",
-        "2022-07-20-01_AVA.csv",
-        "2023-01-19-22_AVA.csv",
-        "2023-01-23-15_AVA.csv",
-    ]
-    valid_files = [
-        "2023-01-19-01_AVA.csv",
-        "2022-06-14-13_AVA.csv",
-        "2022-08-02-01_AVA.csv",
-        "2022-06-28-07_AVA.csv",
-    ]
-    test_files = [
-        "2022-07-15-06_AVA.csv",
-        "2022-07-15-12_AVA.csv",
-    ]
-    #dataset_paths = [f"/home/alicia/store1/alicia/transformer/{file}" for file in train_files]
     dataset_paths = glob.glob(f"/storage/fs/store1/alicia/transformer/AVA/*.json")
     parameters = Parameters(
             n_layer=1,
