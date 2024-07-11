@@ -1,5 +1,5 @@
 from torch.utils.data import DataLoader, Dataset
-from wormdynamics.parameters import Parameters
+from wormdynamics.parameters import UNetParameters, DataParameters
 import glob
 import json
 import numpy as np
@@ -10,32 +10,42 @@ import torch
 
 class WormDataset(Dataset):
 
-    def __init__(self, dataset_paths, device, num_to_augment=0, shift=0):
+    def __init__(self, data_parameters):
 
-        self.shift = shift
-        self.neuron_id_per_dataset = self._map_neurons(dataset_paths)
-        self.dataset_paths = self._filter_datasets(dataset_paths, take_all=True)
-        """self.input_embeddings = torch.tensor(
-                self.assemble_shuffled_neural_behavior_data(
-                    False, False, True),
-                    device=device)"""
+        self.neurons = data_parameters.neurons
+        self.behaviors = data_parameters.behaviors
+
+        self.neuron_id_per_dataset = self._map_neurons(
+                data_parameters.dataset_paths)
+
+        self.dataset_paths = self._filter_datasets(
+                data_parameters.dataset_paths,
+                data_parameters.take_all)
+
         self.input_embeddings = torch.tensor(
-                self.assemble_augmented_data(num_to_augment),
-                device=device)
+                self.assemble_augmented_data(
+                    data_parameters.num_to_augment,
+                    data_parameters.take_all
+                ),
+                device=data_parameters.device)
+
         self.target_embeddings = self.input_embeddings.clone()
 
     def _filter_datasets(self, dataset_paths, take_all):
 
         if take_all:
             return dataset_paths
+        elif self.neurons:
+            filtered_dataset_paths = []
+            for dataset_path in dataset_paths:
+                dataset_name = dataset_path.split("/")[-1].split('.')[0]
 
-        filtered_dataset_paths = []
-        for dataset_path in dataset_paths:
-            dataset_name = dataset_path.split("/")[-1].split('.')[0]
-            if len(self.neuron_id_per_dataset[dataset_name]) == 2:
-                filtered_dataset_paths.append(dataset_path)
-
-        return filtered_dataset_paths
+                if set(list(self.neuron_id_per_dataset[dataset_name].keys()
+                        )) == set(self.neurons):
+                    filtered_dataset_paths.append(dataset_path)
+            return filtered_dataset_paths
+        else:
+            raise ValueError("Needs to indicate which neurons to take.")
 
     def _map_neurons(self, dataset_paths):
 
@@ -47,10 +57,60 @@ class WormDataset(Dataset):
                 data = json.load(f)
 
             for n_id, info_dict in data["labeled"].items():
-                if info_dict['label'] == "AVAR" or info_dict['label'] == "AVAL":
+                if info_dict['label'] in self.neurons:
                     neuron_id_per_dataset[dataset_name][info_dict['label']] = \
                             int(n_id) - 1
         return neuron_id_per_dataset
+
+    def assemble_augmented_data(self, num_to_augment, take_all):
+        """ combine original traces and behaviors with their augmentations """
+
+        if num_to_augment == 0:
+            return self.assemble_neural_behavior_data(take_all)
+        elif num_to_augment > 0:
+            orignal_data = self.assemble_neural_behavior_data(take_all)
+            augmented_data = self._augment(num_to_augment)
+            return np.vstack((orignal_data, augmented_data))
+        else:
+            ValueError("num to augment cannot be negative")
+
+    def assemble_neural_behavior_data(self, take_all):
+        """ neural activities and behaviors without Gaussian noise """
+
+        assembled_dataset = []
+        for dataset_path in self.dataset_paths:
+
+            dataset_name = dataset_path.split("/")[-1].split('.')[0]
+            id_dict = self.neuron_id_per_dataset[dataset_name]
+
+            with open(dataset_path, "r") as f:
+                data = json.load(f)
+                trace = np.array(data["trace_array"], dtype=np.float32).T
+
+            # how to assemble dataset from `take_columns`
+            # |take_columns| < |neurons| + |behaviors|
+            # for missing neuron(s), we fill the column(s) with zeros
+            # for this user case:
+            #   take_all = True;
+            #   |neurons| > 0; |behaviors| > 0
+
+            # |take_column| = |neurons| + |behaviors|
+            # there will be no missing neurons
+            # for this user case:
+            #   take_all = False;
+
+            if not take_all:
+                all_columns = []
+                for neuron in self.neurons:
+                    neuron_id = id_dict[neuron]
+                    all_columns.append(self._normalize(trace[:1600,
+                                                             neuron_id]))
+                for behavior in self.behaviors:
+                    all_columns.append(self._normalize(np.array(data[behavior],
+                                                                dtype=np.float32)[:1600]))
+                assembled_dataset.append(np.array([*all_columns]).T)
+
+        return np.stack(assembled_dataset, axis=0)
 
     def assemble_data(self,):
         """ neural activities of AVAL and AVAR """
@@ -70,28 +130,6 @@ class WormDataset(Dataset):
 
         return np.stack(assembled_dataset, axis=0)
 
-    def assemble_neural_behavior_data(self,):
-        """ neural activities of AVAL/AVAR and velocity """
-
-        assembled_dataset = []
-        for dataset_path in self.dataset_paths:
-
-            dataset_name = dataset_path.split("/")[-1].split('.')[0]
-            with open(dataset_path, "r") as f:
-                data = json.load(f)
-                trace = np.array(data["trace_array"], dtype=np.float32).T
-                behavior = np.array(data["velocity"], dtype=np.float32)
-            id_dict = self.neuron_id_per_dataset[dataset_name]
-            if len(id_dict) == 2:
-                AVA_id = random.choice(list(id_dict.values()))
-            elif len(id_dict) == 1:
-                AVA_id = list(id_dict.values())[0]
-            AVA = self._normalize(trace[:1600, AVA_id])
-            velocity = self._normalize(behavior[:1600])
-            assembled_dataset.append(np.array([AVA, velocity]).T)
-
-        return np.stack(assembled_dataset, axis=0)
-
     def assemble_shuffled_neural_behavior_data(
             self,
             shuffle_animal,
@@ -105,9 +143,9 @@ class WormDataset(Dataset):
             dataset_name = dataset_path.split("/")[-1].split('.')[0]
             id_dict = self.neuron_id_per_dataset[dataset_name]
             if len(id_dict) == 2:
-                AVA_id = random.choice(list(id_dict.values()))
+                neuron_id = random.choice(list(id_dict.values()))
             elif len(id_dict) == 1:
-                AVA_id = list(id_dict.values())[0]
+                neuron_id = list(id_dict.values())[0]
 
             if not shuffle_animal:
                 with open(dataset_path, "r") as f:
@@ -115,7 +153,7 @@ class WormDataset(Dataset):
                     trace = np.array(data["trace_array"], dtype=np.float32).T
                     behavior = np.array(data["velocity"], dtype=np.float32)
 
-                AVA = trace[:1600, AVA_id]
+                AVA = trace[:1600, neuron_id]
 
                 if shuffle_trace:
                     random.shuffle(AVA)
@@ -135,7 +173,7 @@ class WormDataset(Dataset):
                         data = json.load(f)
                         trace = np.array(data["trace_array"],
                                          dtype=np.float32).T
-                    AVA = trace[:1600, AVA_id]
+                    AVA = trace[:1600, neuron_id]
 
                     with open(dataset_path2, "r") as f:
                         data = json.load(f)
@@ -151,19 +189,7 @@ class WormDataset(Dataset):
 
         return np.stack(assembled_dataset, axis=0)
 
-    def assemble_augmented_data(self, num_to_augment):
-        """ combine original traces and behaviors with their augmentations """
-
-        if num_to_augment == 0:
-            return self.assemble_neural_behavior_data()
-        elif num_to_augment > 0:
-            orignal_data = self.assemble_neural_behavior_data()
-            augmented_data = self._augment(num_to_augment)
-            return np.vstack((orignal_data, augmented_data))
-        else:
-            ValueError("num to augment cannot be negative")
-
-    def _augment(self, num_to_augment):
+    def _augment(self, num_to_augment, noise_multiplier):
         """ augment a chosen number of datasets by adding noise """
 
         assembled_dataset = []
@@ -196,7 +222,7 @@ class WormDataset(Dataset):
                 AVA_id = list(id_dict.values())[0]
 
             AVA = self._normalize(trace[:1600, AVA_id] + \
-                    0.12 * np.random.normal(0, gfp_stdev, (1600,)))
+                    noise_multiplier * np.random.normal(0, gfp_stdev, (1600,)))
             velocity = self._normalize(behavior[:1600])
             assembled_dataset.append(np.array([AVA, velocity]).T)
 
@@ -213,23 +239,19 @@ class WormDataset(Dataset):
     def __len__(self):
         return len(self.input_embeddings)
 
+
 def test():
     dataset_paths = glob.glob(f"/storage/fs/store1/alicia/transformer/AVA/*.json")
-    parameters = Parameters(
-            n_layer=1,
-            dropout=0.1,
-            learning_rate=3e-4,
-            max_epochs=10,
-            eval_epochs=10,
-            batch_size=1,
-            head_size=2,
-            block_size=1600,
-            n_embd=2,
-            ffwd_dim=4,
-            attention_span=10,
-            device="cuda:3")
-    dataset = WormDataset(dataset_paths, parameters.device)
-    dataloader = DataLoader(dataset, batch_size=parameters.batch_size,
+    data_parameters = DataParameters(
+            dataset_paths,
+            neurons = ["AVAL", "AVAR"],
+            behaviors = ["velocity"],
+            noise_multiplier = 0.12,
+            num_to_augment = 0,
+            take_all = False,
+            device = "cuda:3")
+    dataset = WormDataset(data_parameters)
+    dataloader = DataLoader(dataset, batch_size=1,
                             shuffle=True)
     print(len(dataloader.dataset))
     for i, (inputs, targets) in enumerate(dataloader):
@@ -237,3 +259,4 @@ def test():
 
 if __name__ == "__main__":
     test()
+
