@@ -1,37 +1,34 @@
-class Parameters():
-
-    def __init__(
-            self,
-            n_layer,
-            dropout,
-            learning_rate,
-            max_epochs,
-            eval_epochs,
-            batch_size,
-            head_size,
-            block_size,
-            n_embd,
-            ffwd_dim,
-            attention_span,
-            device):
-
-        self.n_head = int(n_embd / head_size)
-        self.n_layer = n_layer
-        self.dropout = dropout
-        self.learning_rate = learning_rate
-        self.max_epochs = max_epochs
-        self.eval_epochs = eval_epochs
-        self.batch_size = batch_size
-        self.head_size = head_size
-        self.block_size = block_size
-        self.n_embd = n_embd
-        self.ffwd_dim = ffwd_dim
-        self.attention_span = attention_span
-        self.device = device
+from dataclasses import dataclass, field
 
 
-class UNetParameters():
+@dataclass
+class TransformerParameters:
+    n_layer: int
+    dropout: float
+    learning_rate: float
+    max_epochs: int
+    eval_epochs: int
+    batch_size: int
+    head_size: int
+    block_size: int
+    n_embd: int
+    ffwd_dim: int
+    attention_span: int
+    device: str
+    n_head: int = field(init=False)
 
-    def __init__(self):
-        pass
+    def __post_init__(self):
+        self.n_head = int(self.n_embd / self.head_size)
 
+@dataclass
+class UNetParameters:
+    learning_rate: float
+    max_epochs: int
+    eval_epochs: int
+    batch_size: int
+    device: str
+
+@dataclass
+class DataParameters:
+    noise_multiplier: float
+    num_to_augment: int
