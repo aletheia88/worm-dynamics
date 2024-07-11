@@ -1,5 +1,6 @@
 from torch.utils.data import DataLoader, Dataset
 from wormdynamics.parameters import UNetParameters, DataParameters
+import copy
 import glob
 import json
 import numpy as np
@@ -14,6 +15,11 @@ class WormDataset(Dataset):
 
         self.neurons = data_parameters.neurons
         self.behaviors = data_parameters.behaviors
+        self.noise_multiplier = data_parameters.noise_multiplier
+        self.device = data_parameters.device
+
+        self.neuron_columns = []    # column indices of actual neurons
+        self.behavior_columns = []  # column indices of animal behaviors
 
         self.neuron_id_per_dataset = self._map_neurons(
                 data_parameters.dataset_paths)
@@ -23,11 +29,9 @@ class WormDataset(Dataset):
                 data_parameters.take_all)
 
         self.input_embeddings = torch.tensor(
-                self.assemble_augmented_data(
-                    data_parameters.num_to_augment,
-                    data_parameters.take_all
-                ),
-                device=data_parameters.device)
+                self.assemble_neural_behavior_data(
+                    data_parameters.take_all),
+                    device=data_parameters.device)
 
         self.target_embeddings = self.input_embeddings.clone()
 
@@ -62,14 +66,18 @@ class WormDataset(Dataset):
                             int(n_id) - 1
         return neuron_id_per_dataset
 
-    def assemble_augmented_data(self, num_to_augment, take_all):
+    def assemble_augmented_data(
+            self,
+            num_to_augment,
+            take_all,
+            noise_multiplier):
         """ combine original traces and behaviors with their augmentations """
 
         if num_to_augment == 0:
             return self.assemble_neural_behavior_data(take_all)
         elif num_to_augment > 0:
             orignal_data = self.assemble_neural_behavior_data(take_all)
-            augmented_data = self._augment(num_to_augment)
+            augmented_data = self._augment(num_to_augment, noise_multiplier)
             return np.vstack((orignal_data, augmented_data))
         else:
             ValueError("num to augment cannot be negative")
@@ -98,19 +106,57 @@ class WormDataset(Dataset):
             # there will be no missing neurons
             # for this user case:
             #   take_all = False;
-
-            if not take_all:
-                all_columns = []
-                for neuron in self.neurons:
-                    neuron_id = id_dict[neuron]
-                    all_columns.append(self._normalize(trace[:1600,
-                                                             neuron_id]))
-                for behavior in self.behaviors:
+            all_columns = []
+            if take_all:
+                for i, neuron in enumerate(self.neurons):
+                    if neuron in id_dict.keys():
+                        self.neuron_columns.append(i)
+                        neuron_id = id_dict[neuron]
+                        all_columns.append(self._normalize(trace[:1600,
+                                                                 neuron_id]))
+                    else:
+                        all_columns.append(np.zeros(1600,))
+                for i, behavior in enumerate(self.behaviors):
+                    self.behavior_columns.append(i)
                     all_columns.append(self._normalize(np.array(data[behavior],
                                                                 dtype=np.float32)[:1600]))
-                assembled_dataset.append(np.array([*all_columns]).T)
+            else:
+                for i, neuron in enumerate(self.neurons):
+                    neuron_id = id_dict[neuron]
+                    self.neuron_columns.append(i)
+                    all_columns.append(self._normalize(trace[:1600,
+                                                             neuron_id]))
+                for i, behavior in enumerate(self.behaviors):
+                    self.behavior_columns.append(i)
+                    all_columns.append(self._normalize(np.array(data[behavior],
+                                                                dtype=np.float32)[:1600]))
+
+            assembled_dataset.append(np.array([*all_columns]).T)
 
         return np.stack(assembled_dataset, axis=0)
+
+    def augment_with_gaussian_noise(self, inputs):
+
+        # inputs has shape (1, 1600, d)
+        gfp_dataset_name = random.choice(
+                ["2022-01-07-03", "2022-03-16-01", "2022-03-16-02"])
+        gfp_dataset_path = \
+        f"/home/alicia/store1/alicia/transformer/GFP/{gfp_dataset_name}.json"
+
+        with open(gfp_dataset_path, "r") as f:
+            data = json.load(f)
+            gfp_stdev = np.std(np.array(data["trace_array"],
+                                        dtype=np.float32).T)
+
+        augmented_inputs = copy.deepcopy(inputs)
+        for col in self.neuron_columns:
+            augmented_inputs[0, :, col] = self._normalize(
+                    inputs[0, :, col] + torch.tensor(
+                        self.noise_multiplier * \
+                        np.random.normal(0, gfp_stdev, (1600,)),
+                    device=self.device))
+
+        return augmented_inputs
 
     def assemble_data(self,):
         """ neural activities of AVAL and AVAR """
@@ -247,7 +293,7 @@ def test():
             neurons = ["AVAL", "AVAR"],
             behaviors = ["velocity"],
             noise_multiplier = 0.12,
-            num_to_augment = 0,
+            num_to_augment = 1,
             take_all = False,
             device = "cuda:3")
     dataset = WormDataset(data_parameters)
@@ -255,7 +301,9 @@ def test():
                             shuffle=True)
     print(len(dataloader.dataset))
     for i, (inputs, targets) in enumerate(dataloader):
+        print(f"augmented_inputs: {augmented_inputs.shape}")
         print(f"batch {i}, inputs: {inputs.shape} targets: {targets.shape}\n")
+        augmented_inputs = dataset.augment_with_gaussian_noise(inputs)
 
 if __name__ == "__main__":
     test()
