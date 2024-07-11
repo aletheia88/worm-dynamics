@@ -18,8 +18,8 @@ class WormDataset(Dataset):
         self.noise_multiplier = data_parameters.noise_multiplier
         self.device = data_parameters.device
 
-        self.neuron_columns = []    # column indices of actual neurons
-        self.behavior_columns = []  # column indices of animal behaviors
+        self.neuron_columns = {}    # column indices of actual neurons
+        self.behavior_columns = {}  # column indices of animal behaviors
 
         self.neuron_id_per_dataset = self._map_neurons(
                 data_parameters.dataset_paths)
@@ -27,6 +27,9 @@ class WormDataset(Dataset):
         self.dataset_paths = self._filter_datasets(
                 data_parameters.dataset_paths,
                 data_parameters.take_all)
+
+        self.labels = [path.split("/")[-1].split('.')[0] for path in
+                       self.dataset_paths]
 
         self.input_embeddings = torch.tensor(
                 self.assemble_neural_behavior_data(
@@ -89,6 +92,8 @@ class WormDataset(Dataset):
         for dataset_path in self.dataset_paths:
 
             dataset_name = dataset_path.split("/")[-1].split('.')[0]
+            self.neuron_columns[dataset_name] = []
+            self.behavior_columns[dataset_name] = []
             id_dict = self.neuron_id_per_dataset[dataset_name]
 
             with open(dataset_path, "r") as f:
@@ -110,32 +115,45 @@ class WormDataset(Dataset):
             if take_all:
                 for i, neuron in enumerate(self.neurons):
                     if neuron in id_dict.keys():
-                        self.neuron_columns.append(i)
                         neuron_id = id_dict[neuron]
                         all_columns.append(self._normalize(trace[:1600,
                                                                  neuron_id]))
+                        self._update_neuron_column(dataset_name,
+                                                   len(all_columns)-1)
                     else:
                         all_columns.append(np.zeros(1600,))
                 for i, behavior in enumerate(self.behaviors):
-                    self.behavior_columns.append(i)
                     all_columns.append(self._normalize(np.array(data[behavior],
                                                                 dtype=np.float32)[:1600]))
+                    self._update_behavior_column(dataset_name,
+                                                 len(all_columns)-1)
             else:
                 for i, neuron in enumerate(self.neurons):
                     neuron_id = id_dict[neuron]
-                    self.neuron_columns.append(i)
                     all_columns.append(self._normalize(trace[:1600,
                                                              neuron_id]))
+                    self._update_neuron_column(dataset_name,
+                                               len(all_columns)-1)
+
                 for i, behavior in enumerate(self.behaviors):
-                    self.behavior_columns.append(i)
                     all_columns.append(self._normalize(np.array(data[behavior],
                                                                 dtype=np.float32)[:1600]))
+                    self._update_behavior_column(dataset_name,
+                                                 len(all_columns)-1)
 
             assembled_dataset.append(np.array([*all_columns]).T)
 
         return np.stack(assembled_dataset, axis=0)
 
-    def augment_with_gaussian_noise(self, inputs):
+    def _update_neuron_column(self, dataset_name, column_index):
+        if column_index not in self.neuron_columns.values():
+            self.neuron_columns[dataset_name].append(column_index)
+
+    def _update_behavior_column(self, dataset_name, column_index):
+        if column_index not in self.behavior_columns.values():
+            self.behavior_columns[dataset_name].append(column_index)
+
+    def augment_with_gaussian_noise(self, inputs, label):
 
         # inputs has shape (1, 1600, d)
         gfp_dataset_name = random.choice(
@@ -149,7 +167,7 @@ class WormDataset(Dataset):
                                         dtype=np.float32).T)
 
         augmented_inputs = copy.deepcopy(inputs)
-        for col in self.neuron_columns:
+        for col in self.neuron_columns[label]:
             augmented_inputs[0, :, col] = self._normalize(
                     inputs[0, :, col] + torch.tensor(
                         self.noise_multiplier * \
@@ -243,7 +261,7 @@ class WormDataset(Dataset):
         gfp_dataset_name = random.choice(
                 ["2022-01-07-03", "2022-03-16-01", "2022-03-16-02"])
         gfp_dataset_path = \
-        f"{dataset_paths[0].split('AVA')[0]}/GFP/{gfp_dataset_name}.json"
+        f"/home/alicia/store1/alicia/transformer/GFP/{gfp_dataset_name}.json"
 
         with open(gfp_dataset_path, "r") as f:
             data = json.load(f)
@@ -280,7 +298,8 @@ class WormDataset(Dataset):
     def __getitem__(self, index):
         x = self.input_embeddings[index]
         y = self.target_embeddings[index]
-        return x, y
+        label = self.labels[index]
+        return x, y, label
 
     def __len__(self):
         return len(self.input_embeddings)
@@ -300,10 +319,10 @@ def test():
     dataloader = DataLoader(dataset, batch_size=1,
                             shuffle=True)
     print(len(dataloader.dataset))
-    for i, (inputs, targets) in enumerate(dataloader):
-        print(f"augmented_inputs: {augmented_inputs.shape}")
-        print(f"batch {i}, inputs: {inputs.shape} targets: {targets.shape}\n")
-        augmented_inputs = dataset.augment_with_gaussian_noise(inputs)
+    for i, (inputs, targets, label) in enumerate(dataloader):
+        #print(f"augmented_inputs: {augmented_inputs.shape}")
+        print(f"batch {i}, dataset: {label} inputs: {inputs.shape} targets: {targets.shape}\n")
+        #augmented_inputs = dataset.augment_with_gaussian_noise(inputs)
 
 if __name__ == "__main__":
     test()
