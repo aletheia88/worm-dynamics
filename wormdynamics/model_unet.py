@@ -29,7 +29,7 @@ class DoubleConv(nn.Module):
     def forward(self, x):
         return self.conv(x)
 
-class UNET(nn.Module):
+class UNet(nn.Module):
     def __init__(
             self, in_channels=2, out_channels=2, features=[64, 128, 256, 512],
     ):
@@ -91,67 +91,16 @@ class UNET(nn.Module):
 
         return pred, loss
 
-class UNet1D(nn.Module):
-    """convolving over the feature dimension"""
-    def __init__(self):
-        super(UNet1D, self).__init__()
 
-        ### encoder
-        self.enc_conv1 = nn.Conv1d(2, 16, kernel_size=3, padding=1)
-        self.pool1 = nn.MaxPool1d(2)
-        self.enc_conv2 = nn.Conv1d(16, 32, kernel_size=3, padding=1)
-        self.pool2 = nn.MaxPool1d(2)
-
-        ### bottleneck
-        self.bottleneck_conv = nn.Conv1d(32, 64, kernel_size=3, padding=1)
-
-        ### decoder
-        self.upconv1 = nn.ConvTranspose1d(64, 32, kernel_size=2, stride=2)
-
-        self.dec_conv1 = nn.Conv1d(32, 32, kernel_size=3, padding=1)
-        self.upconv2 = nn.ConvTranspose1d(32, 16, kernel_size=2, stride=2)
-        self.dec_conv2 = nn.Conv1d(16, 16, kernel_size=3, padding=1)
-
-        self.final_conv = nn.Conv1d(16, 2, kernel_size=3, padding=1)
-
-    def forward(self, x):
-        ### encoder
-        # (1, 2, 1600) -> (1, 16, 1600)
-        x = F.relu(self.enc_conv1(x))
-        # (1, 16, 1600) -> (1, 16, 800)
-        x = self.pool1(x)
-        # (1, 16, 800) -> (1, 32, 800)
-        x = F.relu(self.enc_conv2(x))
-        # (1, 32, 800) -> (1, 32, 400)
-        x = self.pool2(x)
-
-        ### bottleneck
-        # (1, 32, 400) -> (1, 64, 400)
-        x = F.relu(self.bottleneck_conv(x))
-
-        ### decoder
-        # (1, 64, 400) -> (1, 32, 800)
-        x = self.upconv1(x)
-        # (1, 32, 800) -> (1, 32, 800)
-        x = F.relu(self.dec_conv1(x))
-        # (1, 32, 800) -> (1, 16, 1600)
-        x = self.upconv2(x)
-        # (1, 16, 1600) -> (1, 16, 1600)
-        x = F.relu(self.dec_conv2(x))
-        # final layer
-        # (1, 16, 1600) -> (1, 2, 1600)
-        x = self.final_conv(x)
-        return x
-
-def testUNET():
+def testUNet_toy():
     x = torch.randn((1, 2, 1200))
     y = torch.randn((1, 2, 1200))
-    model = UNET(in_channels=2, out_channels=2)
+    model = UNet(in_channels=2, out_channels=2)
     preds, loss = model(x, y)
     print(preds.shape)
     assert preds.shape == x.shape
 
-def test():
+def testUNet():
     train_files = [
         "2023-03-07-01_AVA.csv",
         "2022-07-20-01_AVA.csv",
@@ -182,4 +131,4 @@ def test():
     print(f"final loss: {loss.item()}")
 
 if __name__ == "__main__":
-    testUNET()
+    testUNet()
