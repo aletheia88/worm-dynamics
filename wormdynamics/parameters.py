@@ -30,5 +30,10 @@ class UNetParameters:
 
 @dataclass
 class DataParameters:
+    dataset_paths: list
+    neurons: list
+    behaviors: list
     noise_multiplier: float
     num_to_augment: int
+    take_all: bool
+    device: str
