@@ -36,4 +36,5 @@ class DataParameters:
     noise_multiplier: float
     num_to_augment: int
     take_all: bool
+    ignore_LRDV: bool
     device: str

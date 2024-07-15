@@ -17,6 +17,8 @@ class WormDataset(Dataset):
         self.behaviors = data_parameters.behaviors
         self.noise_multiplier = data_parameters.noise_multiplier
         self.device = data_parameters.device
+        self.ignore_LRDV = data_parameters.ignore_LRDV
+        self.take_all = data_parameters.take_all
 
         self.neuron_columns = {}    # column indices of actual neurons
         self.behavior_columns = {}  # column indices of animal behaviors
@@ -25,22 +27,21 @@ class WormDataset(Dataset):
                 data_parameters.dataset_paths)
 
         self.dataset_paths = self._filter_datasets(
-                data_parameters.dataset_paths,
-                data_parameters.take_all)
+                data_parameters.dataset_paths)
 
         self.labels = [path.split("/")[-1].split('.')[0] for path in
                        self.dataset_paths]
 
         self.input_embeddings = torch.tensor(
-                self.assemble_neural_behavior_data(
-                    data_parameters.take_all),
+                self.assemble_neural_behavior_data(),
                     device=data_parameters.device)
 
         self.target_embeddings = self.input_embeddings.clone()
 
-    def _filter_datasets(self, dataset_paths, take_all):
+    def _filter_datasets(self, dataset_paths):
+        """ Select datasets that contain all neurons of interest. """
 
-        if take_all:
+        if self.take_all:
             return dataset_paths
         elif self.neurons:
             filtered_dataset_paths = []
@@ -64,28 +65,36 @@ class WormDataset(Dataset):
                 data = json.load(f)
 
             for n_id, info_dict in data["labeled"].items():
-                if info_dict['label'] in self.neurons:
-                    neuron_id_per_dataset[dataset_name][info_dict['label']] = \
-                            int(n_id) - 1
+
+                if not self.ignore_LRDV:
+                    if info_dict['label'] in self.neurons:
+                        neuron_name = info_dict['label']
+                        neuron_id_per_dataset[dataset_name][neuron_name] = \
+                                int(n_id) - 1
+                else:
+                    if info_dict['neuron_class'] in self.neurons:
+                        neuron_name = info_dict['neuron_class']
+                        neuron_id_per_dataset[dataset_name][neuron_name] = \
+                                int(n_id) - 1
+
         return neuron_id_per_dataset
 
     def assemble_augmented_data(
             self,
             num_to_augment,
-            take_all,
             noise_multiplier):
         """ combine original traces and behaviors with their augmentations """
 
         if num_to_augment == 0:
-            return self.assemble_neural_behavior_data(take_all)
+            return self.assemble_neural_behavior_data()
         elif num_to_augment > 0:
-            orignal_data = self.assemble_neural_behavior_data(take_all)
+            orignal_data = self.assemble_neural_behavior_data()
             augmented_data = self._augment(num_to_augment, noise_multiplier)
             return np.vstack((orignal_data, augmented_data))
         else:
             ValueError("num to augment cannot be negative")
 
-    def assemble_neural_behavior_data(self, take_all):
+    def assemble_neural_behavior_data(self,):
         """ neural activities and behaviors without Gaussian noise """
 
         assembled_dataset = []
@@ -112,7 +121,8 @@ class WormDataset(Dataset):
             # for this user case:
             #   take_all = False;
             all_columns = []
-            if take_all:
+            # assembled dataset contains 
+            if self.take_all:
                 for i, neuron in enumerate(self.neurons):
                     if neuron in id_dict.keys():
                         neuron_id = id_dict[neuron]
@@ -309,11 +319,12 @@ def test():
     dataset_paths = glob.glob(f"/storage/fs/store1/alicia/transformer/AVA/*.json")
     data_parameters = DataParameters(
             dataset_paths,
-            neurons = ["AVAL", "AVAR"],
+            neurons = ["AVA"],
             behaviors = ["velocity"],
             noise_multiplier = 0.12,
-            num_to_augment = 1,
+            num_to_augment = 0,
             take_all = False,
+            ignore_LRDV = True,
             device = "cuda:3")
     dataset = WormDataset(data_parameters)
     dataloader = DataLoader(dataset, batch_size=1,
