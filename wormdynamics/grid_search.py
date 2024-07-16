@@ -227,16 +227,7 @@ class GridSearchTransformer():
 
     def _declare_model(self, combination):
         model_parameters = ModelParameters(
-                n_layer=combination[0],
-                dropout=combination[1],
-                learning_rate=combination[2],
-                max_epochs=combination[3],
-                eval_epochs=combination[4],
-                batch_size=combination[5],
-                head_size=combination[6],
-                block_size=combination[7],
-                n_embd=combination[8],
-                ffwd_dim=combination[9],
+                *combination,
                 device=self.device)
         # disable logging attention scores
         log = Log(None)
