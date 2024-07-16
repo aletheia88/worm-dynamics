@@ -33,7 +33,7 @@ class UNet(nn.Module):
     def __init__(
             self, in_channels=2, out_channels=2, features=[64, 128, 256, 512],
     ):
-        super(UNET, self).__init__()
+        super(UNet, self).__init__()
         self.ups = nn.ModuleList()
         self.downs = nn.ModuleList()
         self.pool = nn.MaxPool1d(kernel_size=2, stride=2)
@@ -115,7 +115,7 @@ def testUNet():
         train_set,
         batch_size=1,
         shuffle=True)
-    model = UNET().to(device)
+    model = UNet().to(device)
     for param in model.parameters():
         param.data = param.data.float()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)

@@ -3,7 +3,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from wormdynamics.dataset import WormDataset
 from wormdynamics.log import Log
-from wormdynamics.parameters import Parameters as ModelParameters
+from wormdynamics.parameters import TransformerParameters as ModelParameters
 import math
 import numpy as np
 import random
