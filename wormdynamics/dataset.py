@@ -175,13 +175,12 @@ class WormDataset(Dataset):
             data = json.load(f)
             gfp_stdev = np.std(np.array(data["trace_array"],
                                         dtype=np.float32).T)
-
+        """
         augmented_inputs = copy.deepcopy(inputs)
         for col in self.neuron_columns[label]:
             augmented_inputs[0, :, col] = self._normalize(
                     inputs[0, :, col] + torch.tensor(
-                        self.noise_multiplier * \
-                        np.random.normal(0, gfp_stdev, (1600,)),
+                        np.random.normal(0, self.noise_multiplier, (1600,)),
                     device=self.device))
 
         return augmented_inputs
