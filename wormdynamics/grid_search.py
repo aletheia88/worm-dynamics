@@ -9,6 +9,8 @@ from wormdynamics.parameters import (
         TransformerParameters, UNetParameters, DataParameters)
 import glob
 import itertools
+import json
+import numpy as np
 import random
 import torch
 
@@ -49,14 +51,18 @@ class GridSearchUNetNoiseMultiplier():
     def fit_models(self, param_grid: Dict):
 
         datasets = self.generate_datasets(param_grid)
-        last_valid_loss = {}
+        model_valid_losses = {}
 
         for config, (train_dataset, valid_dataset) in datasets.items():
             # each train-valid pair contains different data parameters
             self._fit_model(train_dataset, valid_dataset)
-            last_valid_loss[config] = self.log.iteration_logs[-1].valid_loss
+            model_valid_losses[config] = [log.valid_loss for log in self.log.iteration_logs]
             # empty previous logs
             self.log.iteration_logs = []
+
+        with open("grid_search/outcomes.json", "w") as f:
+            json.dump(model_valid_losses, f, indent=4)
+
 
     def _fit_model(self, train_dataset, valid_dataset):
 
@@ -238,6 +244,7 @@ class GridSearchTransformer():
 
         return model
 
+
 def test_grid_search_transformer():
     dataset_paths = \
     glob.glob(f"/storage/fs/store1/alicia/transformer/AVA/*.json")
@@ -271,6 +278,7 @@ def test_grid_search_transformer():
     models = grid_search.genernate_models(small_param_grid)
     grid_search.fit_models(small_param_grid, train_paths, valid_paths)
 
+
 def test_grid_search_noise_multiplier():
     dataset_paths = \
     glob.glob(f"/storage/fs/store1/alicia/transformer/AVA/*.json")
@@ -279,7 +287,7 @@ def test_grid_search_noise_multiplier():
     data_param_grid = {
             "neurons": [["AVA"]],
             "behaviors": [["velocity"]],
-            "noise_multiplier": [0.2],
+            "noise_multiplier": list(np.linspace(0, 1, 25)),
             "num_to_augment": [0],
             "take_all": [True],
             "ignore_LRDV": [True],
@@ -288,6 +296,7 @@ def test_grid_search_noise_multiplier():
     grid_search = GridSearchUNetNoiseMultiplier(device, train_paths,
                                                 valid_paths)
     grid_search.fit_models(data_param_grid)
+
 
 if __name__ == "__main__":
     test_grid_search_noise_multiplier()
