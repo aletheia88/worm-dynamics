@@ -26,9 +26,12 @@ class GridSearchUNetNoiseMultiplier():
         self.device = device
         self.train_dataset_paths = train_dataset_paths
         self.valid_dataset_paths = valid_dataset_paths
-        self.model, self.model_parameters = self._declare_model()
-        self.optimizer = torch.optim.AdamW(self.model.parameters(),
-                                      lr=self.model_parameters.learning_rate)
+        self.model_parameters = UNetParameters(
+                learning_rate=3e-4,
+                max_epochs=500,
+                eval_epochs=1,
+                batch_size=1,
+                device=self.device)
         self.log = Log(None)
 
     def generate_datasets(
@@ -51,27 +54,34 @@ class GridSearchUNetNoiseMultiplier():
     def fit_models(self, param_grid: Dict):
 
         datasets = self.generate_datasets(param_grid)
-        model_valid_losses = {}
+        model_losses = {}
 
         for config, (train_dataset, valid_dataset) in datasets.items():
+
+            model = self._declare_model()
+
             # each train-valid pair contains different data parameters
-            self._fit_model(train_dataset, valid_dataset)
-            model_valid_losses[config] = [log.valid_loss for log in self.log.iteration_logs]
+            model_losses[config] = {"train": {}, "valid": {}}
+            self._fit_model(model, train_dataset, valid_dataset)
+            model_losses[config]["train"] = [log.train_loss for log in self.log.iteration_logs]
+            model_losses[config]["valid"] = [log.valid_loss for log in self.log.iteration_logs]
+            with open("grid_search/outcomes.json", "w") as f:
+                json.dump(model_losses, f, indent=4)
             # empty previous logs
             self.log.iteration_logs = []
 
-        with open("grid_search/outcomes.json", "w") as f:
-            json.dump(model_valid_losses, f, indent=4)
-
-
-    def _fit_model(self, train_dataset, valid_dataset):
+    def _fit_model(self, model, train_dataset, valid_dataset):
 
         train_dataloader = self._declare_dataloader(train_dataset,
                                                     shuffle=True)
         valid_dataloader = self._declare_dataloader(valid_dataset,
                                                     shuffle=False)
+        optimizer = torch.optim.AdamW(model.parameters(),
+                                  lr=self.model_parameters.learning_rate)
 
         for n_epoch in tqdm(range(self.model_parameters.max_epochs)):
+
+            self.log.log_iteration(n_epoch, train_loss=0.0)
 
             for i, (inputs, targets, label) in enumerate(train_dataloader):
 
@@ -82,14 +92,19 @@ class GridSearchUNetNoiseMultiplier():
                 inputs = inputs.transpose(2, 1)
                 targets = targets.transpose(2, 1)
 
-                outputs, loss = self.model(inputs.float(), targets.float())
-                self.optimizer.zero_grad(set_to_none=True)
+                outputs, loss = model(inputs.float(), targets.float())
+                optimizer.zero_grad(set_to_none=True)
                 loss.backward()
-                self.optimizer.step()
+                optimizer.step()
+
+                self.log.iteration_logs[-1].train_loss += loss.item()
+
+            self.log.iteration_logs[-1].train_loss /= len(train_dataloader.dataset)
 
             if n_epoch % self.model_parameters.eval_epochs == 0:
-                self.log.log_iteration(n_epoch, valid_loss=0.0)
-                self.get_validation_loss(valid_dataloader)
+                #self.log.log_iteration(n_epoch, valid_loss=0.0)
+                self.log.iteration_logs[-1].valid_loss = 0.0
+                self.get_validation_loss(model, valid_dataloader)
 
     def _declare_dataset(self, dataset_paths, *combination):
 
@@ -106,34 +121,29 @@ class GridSearchUNetNoiseMultiplier():
                 shuffle=shuffle)
 
     def _declare_model(self,):
-        model_parameters = UNetParameters(
-                learning_rate=3e-4,
-                max_epochs=500,
-                eval_epochs=1,
-                batch_size=1,
-                device=self.device)
-        model = UNet().to(model_parameters.device)
+
+        model = UNet().to(self.model_parameters.device)
         for param in model.parameters():
             param.data = param.data.float()
 
-        return model, model_parameters
+        return model
 
     @torch.no_grad()
-    def get_validation_loss(self, valid_dataloader):
+    def get_validation_loss(self, model, valid_dataloader):
 
-        self.model.eval() 
+        model.eval() 
         for i, (inputs, targets, label) in enumerate(valid_dataloader):
 
             mask_index = random.choice([0, 1])
             inputs[0, :, mask_index] = 0
             inputs = inputs.transpose(2, 1)
             targets = targets.transpose(2, 1)
-            outputs, loss = self.model(inputs, targets)
+            outputs, loss = model(inputs, targets)
 
             self.log.iteration_logs[-1].valid_loss += loss.item()
 
         self.log.iteration_logs[-1].valid_loss /= len(valid_dataloader.dataset)
-        self.model.train()
+        model.train()
 
 
 class GridSearchTransformer():
@@ -282,12 +292,15 @@ def test_grid_search_transformer():
 def test_grid_search_noise_multiplier():
     dataset_paths = \
     glob.glob(f"/storage/fs/store1/alicia/transformer/AVA/*.json")
-    train_paths = dataset_paths[:-2]
-    valid_paths = dataset_paths[-2:]
+    train_paths = dataset_paths[:-10]
+    valid_paths = dataset_paths[-10:]
+    noise = np.linspace(0, 1, 25)
+    noise_multipliers = np.array([np.float32(np.round(num, 2)) for num in noise], dtype=np.float32)
+    print(noise_multipliers)
     data_param_grid = {
             "neurons": [["AVA"]],
             "behaviors": [["velocity"]],
-            "noise_multiplier": list(np.linspace(0, 1, 25)),
+            "noise_multiplier": noise_multipliers,
             "num_to_augment": [0],
             "take_all": [True],
             "ignore_LRDV": [True],
