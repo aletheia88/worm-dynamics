@@ -89,7 +89,7 @@ class GridSearchUNetNoiseMultiplier():
                         inputs, label[0])
                 mask_index = random.choice([0, 1])
                 augmented_inputs[0, :, mask_index] = 0
-                inputs = inputs.transpose(2, 1)
+                inputs = augmented_inputs.transpose(2, 1)
                 targets = targets.transpose(2, 1)
 
                 outputs, loss = model(inputs.float(), targets.float())
