@@ -117,21 +117,24 @@ class DoubleConv(nn.Module):
     def forward(self, x):
         return self.conv(x)
 
+
 class UNet(nn.Module):
     def __init__(
-            self, in_channels=2, out_channels=2, features=[64, 128, 256, 512],
+            self, in_channels=4, out_channels=4,
+            #features=[128, 256, 512, 1024]
+            features=[64, 128, 256, 512],
     ):
         super(UNet, self).__init__()
         self.ups = nn.ModuleList()
         self.downs = nn.ModuleList()
         self.pool = nn.MaxPool1d(kernel_size=2, stride=2)
 
-        # Down part of UNET
+        # Down part of U-Net
         for feature in features:
             self.downs.append(DoubleConv(in_channels, feature))
             in_channels = feature
 
-        # Up part of UNET
+        # Up part of U-Net
         for feature in reversed(features):
             self.ups.append(
                 nn.ConvTranspose1d(
@@ -145,7 +148,7 @@ class UNet(nn.Module):
 
     def forward(self, x, targets):
         skip_connections = []
-
+        #print(x.shape)
         for down in self.downs:
             x = down(x)
             #print(f"down: {x.shape}")
