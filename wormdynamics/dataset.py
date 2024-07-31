@@ -165,6 +165,7 @@ class WormDataset(Dataset):
 
     def augment_with_gaussian_noise(self, inputs, label):
 
+        """
         # inputs has shape (1, 1600, d)
         gfp_dataset_name = random.choice(
                 ["2022-01-07-03", "2022-03-16-01", "2022-03-16-02"])
@@ -176,14 +177,13 @@ class WormDataset(Dataset):
             gfp_stdev = np.std(np.array(data["trace_array"],
                                         dtype=np.float32).T)
         """
-        augmented_inputs = copy.deepcopy(inputs)
+        org_inputs = inputs.detach().cpu().numpy()
+        augmented_inputs = copy.deepcopy(org_inputs)
         for col in self.neuron_columns[label]:
-            augmented_inputs[0, :, col] = self._normalize(
-                    inputs[0, :, col] + torch.tensor(
-                        np.random.normal(0, self.noise_multiplier, (1600,)),
-                    device=self.device))
+            noise = np.random.normal(0, self.noise_multiplier, (1600,))
+            augmented_inputs[0, :, col] = org_inputs[0, :, col] + noise
 
-        return augmented_inputs
+        return torch.tensor(augmented_inputs, device=self.device)
 
     def assemble_data(self,):
         """ neural activities of AVAL and AVAR """
@@ -301,8 +301,10 @@ class WormDataset(Dataset):
 
         return np.stack(assembled_dataset, axis=0)
 
-    def _normalize(self, data):
-        return (data - data.min()) / (data.max() - data.min()) * 2 - 1
+    def _normalize(self, data, new_min=-0.9, new_max=0.9):
+        scale = (new_max - new_min) / (data.max() - data.min())
+        return np.array([(x - data.min()) * scale + new_min for x in data])
+        #return (data - data.min()) / (data.max() - data.min()) * 2 - 1
 
     def __getitem__(self, index):
         x = self.input_embeddings[index]
