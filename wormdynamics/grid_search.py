@@ -89,10 +89,10 @@ class GridSearchUNetNoiseMultiplier():
                         inputs, label[0])
                 mask_index = random.choice([0, 1])
                 augmented_inputs[0, :, mask_index] = 0
-                inputs = augmented_inputs.transpose(2, 1)
+                augmented_inputs = augmented_inputs.transpose(2, 1)
                 targets = targets.transpose(2, 1)
 
-                outputs, loss = model(inputs.float(), targets.float())
+                outputs, loss = model(augmented_inputs.float(), targets.float())
                 optimizer.zero_grad(set_to_none=True)
                 loss.backward()
                 optimizer.step()
@@ -250,7 +250,7 @@ class GridSearchTransformer():
         model = WormTransformer(model_parameters,
                                 log).to(model_parameters.device)
         for param in model.parameters():
-            param.data = param.data.double()
+            param.data = param.data.float()
 
         return model
 
@@ -302,10 +302,10 @@ def test_grid_search_noise_multiplier():
             "behaviors": [["velocity"]],
             "noise_multiplier": noise_multipliers,
             "num_to_augment": [0],
-            "take_all": [True],
+            "take_all": [False],
             "ignore_LRDV": [True],
     }
-    device = "cuda:3"
+    device = "cuda:0"
     grid_search = GridSearchUNetNoiseMultiplier(device, train_paths,
                                                 valid_paths)
     grid_search.fit_models(data_param_grid)

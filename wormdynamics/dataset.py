@@ -34,7 +34,8 @@ class WormDataset(Dataset):
 
         self.input_embeddings = torch.tensor(
                 self.assemble_neural_behavior_data(),
-                    device=data_parameters.device)
+                    device=data_parameters.device,
+                    dtype=torch.float32)
 
         self.target_embeddings = self.input_embeddings.clone()
 
@@ -177,13 +178,17 @@ class WormDataset(Dataset):
             gfp_stdev = np.std(np.array(data["trace_array"],
                                         dtype=np.float32).T)
         """
-        org_inputs = inputs.detach().cpu().numpy()
+        org_inputs = inputs.detach().cpu().numpy().astype(np.float32)
         augmented_inputs = copy.deepcopy(org_inputs)
         for col in self.neuron_columns[label]:
             noise = np.random.normal(0, self.noise_multiplier, (1600,))
             augmented_inputs[0, :, col] = org_inputs[0, :, col] + noise
 
-        return torch.tensor(augmented_inputs, device=self.device)
+        for col in self.behavior_columns[label]:
+            noise = np.random.normal(0, self.noise_multiplier, (1600,))
+            augmented_inputs[0, :, col] = org_inputs[0, :, col] + noise
+
+        return torch.tensor(augmented_inputs, dtype=torch.float32, device=self.device)
 
     def assemble_data(self,):
         """ neural activities of AVAL and AVAR """
@@ -333,8 +338,9 @@ def test():
     print(len(dataloader.dataset))
     for i, (inputs, targets, label) in enumerate(dataloader):
         #print(f"augmented_inputs: {augmented_inputs.shape}")
-        print(f"batch {i}, dataset: {label} inputs: {inputs.shape} targets: {targets.shape}\n")
-        #augmented_inputs = dataset.augment_with_gaussian_noise(inputs)
+        print(f"neurons: {dataset.neuron_columns[label[0]]}")
+        augmented_inputs = dataset.augment_with_gaussian_noise(inputs, label[0])
+        print(f"batch {i}, dataset: {label} inputs: {augmented_inputs.shape} targets: {targets.shape}\n")
 
 if __name__ == "__main__":
     test()
