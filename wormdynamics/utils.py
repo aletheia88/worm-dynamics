@@ -1,4 +1,4 @@
-from info import *
+from wormdynamics.info import *
 from tqdm import tqdm
 import glob
 import json
