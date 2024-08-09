@@ -38,3 +38,4 @@ class DataParameters:
     take_all: bool
     ignore_LRDV: bool
     device: str
+    normalize: bool

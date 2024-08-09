@@ -32,8 +32,14 @@ class WormDataset(Dataset):
         self.labels = [path.split("/")[-1].split('.')[0] for path in
                        self.dataset_paths]
 
-        self.input_embeddings = torch.tensor(
-                self.assemble_neural_behavior_data(),
+        if data_parameters.normalize:
+            self.input_embeddings = torch.tensor(
+                    self.assemble_normalized_neural_behavior_data(),
+                    device=data_parameters.device,
+                    dtype=torch.float32)
+        else:
+            self.input_embeddings = torch.tensor(
+                    self.assemble_raw_neural_behavior_data(),
                     device=data_parameters.device,
                     dtype=torch.float32)
 
@@ -95,8 +101,64 @@ class WormDataset(Dataset):
         else:
             ValueError("num to augment cannot be negative")
 
+    def assemble_raw_neural_behavior_data(self, ):
+        """ neural activities and behaviors without normalization """
+
+        assembled_dataset = []
+        for dataset_path in self.dataset_paths:
+
+            dataset_name = dataset_path.split("/")[-1].split('.')[0]
+            self.neuron_columns[dataset_name] = []
+            self.behavior_columns[dataset_name] = []
+            id_dict = self.neuron_id_per_dataset[dataset_name]
+
+            with open(dataset_path, "r") as f:
+                data = json.load(f)
+                trace = np.array(data["trace_original"], dtype=np.float32)
+
+            all_columns = []
+            if self.take_all:
+                for i, neuron in enumerate(self.neurons):
+                    if neuron in id_dict.keys():
+                        neuron_id = id_dict[neuron]
+                        all_columns.append(trace[:1600, neuron_id])
+                        self._update_neuron_column(dataset_name, len(all_columns) - 1)
+                    else:
+                        all_columns.append(np.zeros(1600,))
+                for i, behavior in enumerate(self.behaviors):
+                    all_columns.append(np.array(data[behavior],
+                                                dtype=np.float32)[:1600])
+                    self._update_behavior_column(dataset_name,
+                                                 len(all_columns)-1)
+            else:
+                for i, neuron in enumerate(self.neurons):
+                    neuron_id = id_dict[neuron]
+                    all_columns.append(trace[:1600, neuron_id])
+                    self._update_neuron_column(dataset_name, len(all_columns) - 1)
+
+                for i, behavior in enumerate(self.behaviors):
+                    all_columns.append(np.array(data[behavior],
+                                                dtype=np.float32)[:1600])
+                    self._update_behavior_column(dataset_name,
+                                                 len(all_columns) - 1)
+
+            assembled_dataset.append(np.array([*all_columns]).T)
+
+        return np.stack(assembled_dataset, axis=0)
+
+    def assemble_normalized_neural_behavior_data(self, ):
+        """ neural activities and behaviors with normalization """
+
+        raw_data = self.assemble_raw_neural_behavior_data()
+        normalized_data = copy.deepcopy(raw_data)
+
+        normalized_data[:, 0] = self._normalize_MC(raw_data[:, 0])
+        normalized_data[:, 1] = self._normalize_pumping(raw_data[:, 1])
+
+        return normalized_data
+
     def assemble_neural_behavior_data(self,):
-        """ neural activities and behaviors without Gaussian noise """
+        """ neural activities and behaviors with normalization """
 
         assembled_dataset = []
         for dataset_path in self.dataset_paths:
@@ -311,6 +373,12 @@ class WormDataset(Dataset):
         return np.array([(x - data.min()) * scale + new_min for x in data])
         #return (data - data.min()) / (data.max() - data.min()) * 2 - 1
 
+    def _normalize_pumping(self, data):
+        return data / 2 - 1
+
+    def _normalize_MC(self, data):
+        return data / (3 * np.percentile(data, 10)) - 1
+
     def __getitem__(self, index):
         x = self.input_embeddings[index]
         y = self.target_embeddings[index]
@@ -319,7 +387,6 @@ class WormDataset(Dataset):
 
     def __len__(self):
         return len(self.input_embeddings)
-
 
 def test():
     dataset_paths = glob.glob(f"/storage/fs/store1/alicia/transformer/AVA/*.json")
