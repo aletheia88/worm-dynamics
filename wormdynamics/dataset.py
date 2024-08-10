@@ -149,12 +149,13 @@ class WormDataset(Dataset):
     def assemble_normalized_neural_behavior_data(self, ):
         """ neural activities and behaviors with normalization """
 
-        raw_data = self.assemble_raw_neural_behavior_data()
-        normalized_data = copy.deepcopy(raw_data)
-
-        normalized_data[:, 0] = self._normalize_MC(raw_data[:, 0])
-        normalized_data[:, 1] = self._normalize_pumping(raw_data[:, 1])
-
+        normalized_data = self.assemble_raw_neural_behavior_data()
+        num_samples = normalized_data.shape[0]
+        for i in range(num_samples):
+            normalized_data[i, :, 0] = self._normalize_MC(
+                    normalized_data[i, :, 0])
+            normalized_data[i, :, 1] = self._normalize_pumping(
+                    normalized_data[i, :, 1])
         return normalized_data
 
     def assemble_neural_behavior_data(self,):
