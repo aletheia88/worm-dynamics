@@ -50,3 +50,11 @@ HIGH_PUMPING_VAR = ['/storage/fs/store1/alicia/transformer/all/2022-01-09-01.jso
                    '/storage/fs/store1/alicia/transformer/all/2023-01-19-08.json',
                    '/storage/fs/store1/alicia/transformer/all/2021-06-11-01.json']
 
+KFC_LABELS_PATH = "/store1/prj_jax/Aggregated_Traces_h5/dict_neuropal_label_prj_kfc.h5"
+KFC_PROCESSED_H5_PATH = "/store1/prj_kfc/data/processed_h5"
+KFC_STRUCTURE_PATH = "/store1/prj_kfc/Structured_Data_Info.h5"
+
+RIM_LABELS_PATH = "/store1/prj_rim/Decoding_Data/Aggregated_Traces_h5/dict_neuropal_label_updated.h5"
+RIM_PROCESSED_H5_PATH = "/store1/prj_rim/processed_h5"
+RIM_STRUCTURE_PATH = "/store1/prj_rim/Decoding_Data/Structured_Data_Info.h5"
+
