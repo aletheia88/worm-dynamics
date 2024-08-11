@@ -27,6 +27,24 @@ def filter_pumping_datasets():
     return filtered_datasets
 
 
+def write_to_json(neuron_class: str, file_path: str):
+
+    trace_dict = assemble_datasets(neuron_class)
+    std_beh = ["velocity", "head_angle", "pumping"]
+
+    for n, dataset in tqdm(enumerate(trace_dict["datasets"])):
+
+        # create a new json file
+        json_dict = {}
+        json_dict["trace_original"] = trace_dict["trace_original"][n].tolist()
+        json_dict["velocity"] = trace_dict["behavior"][n, :, 0].tolist()
+        json_dict["head_angle"] = trace_dict["behavior"][n, :, 1].tolist()
+        json_dict["pumping"] = trace_dict["behavior"][n, :, 2].tolist()
+
+        with open(f"{file_path}/{dataset}.json", "w") as f:
+            json.dump(json_dict, f, indent=4)
+
+
 def assemble_datasets(neuron_class: str, max_len: int = 1600, max_animals: int = 94):
     """ Extract neural and behavioral traces from all datasets containing the specified
     neuron class.
@@ -58,6 +76,7 @@ def assemble_datasets(neuron_class: str, max_len: int = 1600, max_animals: int =
     std_beh = []
     ys = []
     reversals = []
+    ds_included = []
 
     for prj, data in prj_data.items():
 
@@ -89,9 +108,14 @@ def assemble_datasets(neuron_class: str, max_len: int = 1600, max_animals: int =
 
                     reversals.append(loaded_data['behavior']['reversal_events'].T)
 
-    print(f"Found {len(ys)} animals")
+                    if ds not in ds_included:
+                        ds_included.append(ds)
 
-    return {"trace_original": np.array(ys), "behavior": np.array(std_beh)}
+    print(f"Found {len(ds_included)} animals")
+
+    return {"trace_original": np.array(ys),
+            "behavior": np.array(std_beh),
+            "datasets": ds_included}
 
 
 def h5_to_dict(file_path: str) -> dict:
@@ -128,5 +152,4 @@ def h5_to_dict(file_path: str) -> dict:
 
     with h5py.File(file_path, 'r') as file:
         return recursively_load_dict(file)
-
 
