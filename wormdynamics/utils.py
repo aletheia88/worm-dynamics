@@ -41,8 +41,15 @@ def write_to_json(neuron_class: str, file_path: str):
         json_dict["head_angle"] = trace_dict["behavior"][n, :, 1].tolist()
         json_dict["pumping"] = trace_dict["behavior"][n, :, 2].tolist()
 
-        with open(f"{file_path}/{dataset}.json", "w") as f:
-            json.dump(json_dict, f, indent=4)
+        heatstim_dict = trace_dict["datasets"][dataset]
+        json_dict["heatstim"] = heatstim_dict["heatstim"]
+        if json_dict["heatstim"]:
+            json_dict["stim_begin_confocal"] = heatstim_dict["stim_begin_confocal"]
+        else:
+            json_dict["stim_begin_confocal"] = -1
+
+    with open(f"{file_path}/{dataset}.json", "w") as f:
+        json.dump(json_dict, f, indent=4)
 
 
 def assemble_datasets(neuron_class: str, max_len: int = 1600, max_animals: int = 94):
@@ -76,7 +83,7 @@ def assemble_datasets(neuron_class: str, max_len: int = 1600, max_animals: int =
     std_beh = []
     ys = []
     reversals = []
-    ds_included = []
+    ds_included = {}
 
     for prj, data in prj_data.items():
 
@@ -94,22 +101,31 @@ def assemble_datasets(neuron_class: str, max_len: int = 1600, max_animals: int =
                 if ds in ds_of_interest and items['confidence'] > 3.5:
                     file_path = f"{data['processed_h5']}/{ds}-data.h5"
                     loaded_data = h5_to_dict(file_path)
+
                     if(len(loaded_data['gcamp']['trace_array_original'][:, 0]) < max_len):
                         continue
                     if(len(ys) == max_animals):
                         break
-                    std_beh.append(np.array([loaded_data['behavior']["velocity"][:max_len],
+
+                    if ds not in ds_included.keys():
+                        ds_included[ds] = {}
+                        timing = loaded_data["timing"]
+
+                        if "stim_begin_confocal" in timing.keys():
+                            ds_included[ds]["heatstim"] = True
+                            ds_included[ds]["stim_begin_confocal"] = int(
+                                    timing["stim_begin_confocal"][0])
+                        else:
+                            ds_included[ds]["heatstim"] = False
+
+                        std_beh.append(np.array([loaded_data['behavior']["velocity"][:max_len],
                                              loaded_data['behavior']["head_angle"][:max_len]
                                              * (-1 if structure_data[ds]['Flipped'] else
                                                 1),
                                              loaded_data['behavior']["pumping"][:max_len]]).T)
-
-                    ys.append(loaded_data['gcamp']['trace_array_original'][:max_len, items['index']-1])
-
-                    reversals.append(loaded_data['behavior']['reversal_events'].T)
-
-                    if ds not in ds_included:
-                        ds_included.append(ds)
+                        ys.append(loaded_data['gcamp']['trace_array_original'][:max_len,
+                                                                               items['index']-1])
+                        reversals.append(loaded_data['behavior']['reversal_events'].T)
 
     print(f"Found {len(ds_included)} animals")
 
