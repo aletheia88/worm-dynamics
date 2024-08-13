@@ -6,25 +6,50 @@ import json
 import numpy as np
 
 
-def filter_pumping_datasets():
+def filter_pumping_datasets(remove_heatstim: bool, remove_lowvar: bool):
     """ Filter datasets to retain only those where the difference between the 
     75th percentile and the 25th percentile of the pumping rate exceeds 0.5. """
 
-    dataset_paths = glob.glob(f"/storage/fs/store1/alicia/transformer/all/*.json")
-    filtered_datasets = []
+    # 104 dataset paths in total
+    dataset_paths = glob.glob("/storage/fs/store1/alicia/transformer/MC/*.json") + \
+            glob.glob("/storage/fs/store1/alicia/transformer/all/*.json")
+    filtered_dataset_paths = []
+    unique_datasets = []
 
     for dataset_path in tqdm(dataset_paths):
 
-        with open(dataset_path, "r") as f:
-            data = json.load(f)
-            pumping_rates = np.array(data["pumping"], dtype=np.float32)
+        # remove heatstim datasets
+        if remove_heatstim:
 
-        if any(dataset in dataset_path for dataset in HEATSTIM):
-            continue
-        if np.percentile(pumping_rates, 75) - np.percentile(pumping_rates, 25) > 0.5:
-            filtered_datasets.append(dataset_path)
+            if "all" in dataset_path:
+                if any(dataset in dataset_path for dataset in HEATSTIM):
+                    continue
+                else:
+                    with open(dataset_path, "r") as f:
+                        data = json.load(f)
+                        pumping_rates = np.array(data["pumping"], dtype=np.float32)
+            else:
+                with open(dataset_path, "r") as f:
+                    data = json.load(f)
+                if not data["heatstim"]:
+                    pumping_rates = np.array(data["pumping"], dtype=np.float32)
 
-    return filtered_datasets
+            if remove_lowvar:
+                if np.percentile(pumping_rates, 75) - \
+                        np.percentile(pumping_rates, 25) > 0.5:
+
+                    dataset_name = dataset_path.split('/')[-1].split('.json')[0]
+                    if dataset_name not in unique_datasets:
+                        filtered_dataset_paths.append(dataset_path)
+                        unique_datasets.append(dataset_name)
+            else:
+                raise NotImplementedError("filtering not yet implemented")
+
+        # keep the no-stim part in heatstim datasets 
+        else:
+            raise NotImplementedError("filtering not yet implemented")
+
+    return filtered_dataset_paths
 
 
 def write_to_json(neuron_class: str, file_path: str):
@@ -62,7 +87,8 @@ def assemble_datasets(neuron_class: str, max_len: int = 1600, max_animals: int =
     Returns:
         Dict[str, np.ndarray]: A dictionary with keys 'trace_original' and 'behavior'.
             - 'trace_original': A multidimensional numpy array with shape (max_length,).
-            - 'behavior': A multidimensional numpy array with shape (num_animals, max_length, 3),
+            - 'behavior': A multidimensional numpy array with shape (num_animals,
+              max_length, 3),
               where each entry corresponds to a different behavioral feature over time.
     Note:
         This code is provided courtesy of Alex Hister. """
