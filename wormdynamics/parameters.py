@@ -30,6 +30,7 @@ class UNetParameters:
 
 @dataclass
 class DataParameters:
+    all_paths: list
     dataset_paths: list
     neurons: list
     behaviors: list

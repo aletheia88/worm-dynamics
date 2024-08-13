@@ -1,4 +1,5 @@
 from torch.utils.data import DataLoader, Dataset
+from wormdynamics.info import *
 from wormdynamics.parameters import UNetParameters, DataParameters
 import copy
 import glob
@@ -23,27 +24,83 @@ class WormDataset(Dataset):
         self.neuron_columns = {}    # column indices of actual neurons
         self.behavior_columns = {}  # column indices of animal behaviors
 
+        # data_parameters.dataset_paths should be set to .JSON paths under `all`
         self.neuron_id_per_dataset = self._map_neurons(
-                data_parameters.dataset_paths)
+                data_parameters.all_paths)
+        
+        """self.dataset_paths = self._filter_datasets(
+                data_parameters.dataset_paths)"""
 
-        self.dataset_paths = self._filter_datasets(
-                data_parameters.dataset_paths)
+        #self.dataset_paths = HIGH_PUMPING_NO_HEATSTIM
+        self.dataset_paths = data_parameters.dataset_paths
 
         self.labels = [path.split("/")[-1].split('.')[0] for path in
                        self.dataset_paths]
 
         if data_parameters.normalize:
             self.input_embeddings = torch.tensor(
-                    self.assemble_normalized_neural_behavior_data(),
+                    self.assemble_normalized_MC_pumping_data(),
                     device=data_parameters.device,
                     dtype=torch.float32)
         else:
             self.input_embeddings = torch.tensor(
-                    self.assemble_raw_neural_behavior_data(),
+                    self.assemble_raw_MC_pumping_data(),
                     device=data_parameters.device,
                     dtype=torch.float32)
 
         self.target_embeddings = self.input_embeddings.clone()
+
+    def assemble_normalized_MC_pumping_data(self):
+        """ neural activities and behaviors with normalization """
+
+        normalized_data = self.assemble_raw_MC_pumping_data()
+        num_samples = normalized_data.shape[0]
+        for i in range(num_samples):
+            normalized_data[i, :, 0] = self._normalize_MC(
+                    normalized_data[i, :, 0])
+            normalized_data[i, :, 1] = self._normalize_pumping(
+                    normalized_data[i, :, 1])
+        return normalized_data
+
+    def assemble_raw_MC_pumping_data(self):
+        """ Assembles raw motor cortex (MC) and pumping activity data from multiple
+        animals.
+
+        Reads in the MC and pumping activity data for each animal and consolidates it
+        into a single multidimensional array.
+
+        Args:
+            chunk (bool): whether to chunk from where heatstim is applied
+
+        Returns:
+            numpy.ndarray: A 3D array with shape (num_animals, sequence_length, 2) where
+            each element contains the MC and pumping activity data for each animal over
+            a sequence of time. """
+
+        assembled_dataset = []
+        # dataloading is different based on dataset paths
+        for dataset_path in self.dataset_paths:
+            with open(dataset_path, "r") as f:
+                data = json.load(f)
+
+            if "all" in dataset_path:
+                dataset_name = dataset_path.split("/")[-1].split(".")[0]
+                id_dict = self.neuron_id_per_dataset[dataset_name]
+
+                if "MC" in id_dict.keys():
+                    mc_id = int(id_dict["MC"])
+                    trace_original = np.array(data["trace_original"],
+                                              dtype=np.float32)[:1600, mc_id]
+                    pumping_rates = np.array(data["pumping"], dtype=np.float32)
+                else:
+                    continue
+            else:
+                trace_original = np.array(data["trace_original"], dtype=np.float32)
+                pumping_rates = np.array(data["pumping"], dtype=np.float32)
+
+            assembled_dataset.append(np.column_stack((trace_original, pumping_rates)))
+
+        return np.array(assembled_dataset)
 
     def _filter_datasets(self, dataset_paths):
         """ Select datasets that contain all neurons of interest. """
@@ -145,18 +202,6 @@ class WormDataset(Dataset):
             assembled_dataset.append(np.array([*all_columns]).T)
 
         return np.stack(assembled_dataset, axis=0)
-
-    def assemble_normalized_neural_behavior_data(self, ):
-        """ neural activities and behaviors with normalization """
-
-        normalized_data = self.assemble_raw_neural_behavior_data()
-        num_samples = normalized_data.shape[0]
-        for i in range(num_samples):
-            normalized_data[i, :, 0] = self._normalize_MC(
-                    normalized_data[i, :, 0])
-            normalized_data[i, :, 1] = self._normalize_pumping(
-                    normalized_data[i, :, 1])
-        return normalized_data
 
     def assemble_neural_behavior_data(self,):
         """ neural activities and behaviors with normalization """
@@ -390,25 +435,26 @@ class WormDataset(Dataset):
         return len(self.input_embeddings)
 
 def test():
-    dataset_paths = glob.glob(f"/storage/fs/store1/alicia/transformer/AVA/*.json")
+
+    dataset_paths = glob.glob(f"/storage/fs/store1/alicia/transformer/all/*.json")
     data_parameters = DataParameters(
             dataset_paths,
-            neurons = ["AVA"],
-            behaviors = ["velocity"],
-            noise_multiplier = 0.12,
-            num_to_augment = 0,
-            take_all = False,
-            ignore_LRDV = True,
-            device = "cuda:3")
+            neurons = ["MC"], # used in `_map_neurons`
+            behaviors = ["pumping"], # used in `_map_neurons`
+            noise_multiplier = 0.12, # not used
+            num_to_augment = 0, # not used
+            take_all = False, # not used
+            ignore_LRDV = True, # used in `_map_neurons`
+            device = "cuda:3",
+            normalize = True)
     dataset = WormDataset(data_parameters)
     dataloader = DataLoader(dataset, batch_size=1,
                             shuffle=True)
     print(len(dataloader.dataset))
     for i, (inputs, targets, label) in enumerate(dataloader):
-        #print(f"augmented_inputs: {augmented_inputs.shape}")
-        print(f"neurons: {dataset.neuron_columns[label[0]]}")
-        augmented_inputs = dataset.augment_with_gaussian_noise(inputs, label[0])
-        print(f"batch {i}, dataset: {label} inputs: {augmented_inputs.shape} targets: {targets.shape}\n")
+        print(f"inputs: {inputs.shape} targets: {targets.shape} label: {label}")
+        #augmented_inputs = dataset.augment_with_gaussian_noise(inputs, label[0])
+        #print(f"batch {i}, dataset: {label} inputs: {augmented_inputs.shape} targets: {targets.shape}\n")
 
 if __name__ == "__main__":
     test()

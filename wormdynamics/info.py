@@ -1,3 +1,24 @@
+
+HIGH_PUMPING_NO_HEATSTIM = [
+        '/storage/fs/store1/alicia/transformer/MC/2023-01-23-08.json',
+        '/storage/fs/store1/alicia/transformer/MC/2022-06-14-07.json',
+        '/storage/fs/store1/alicia/transformer/MC/2022-08-02-01.json',
+        '/storage/fs/store1/alicia/transformer/all/2022-01-09-01.json',
+        '/storage/fs/store1/alicia/transformer/all/2022-04-14-04.json',
+        '/storage/fs/store1/alicia/transformer/all/2021-09-22-05.json',
+        '/storage/fs/store1/alicia/transformer/all/2021-08-17-01.json',
+        '/storage/fs/store1/alicia/transformer/all/2023-01-19-22.json',
+        '/storage/fs/store1/alicia/transformer/all/2023-01-23-01.json',
+        '/storage/fs/store1/alicia/transformer/all/2023-01-19-15.json',
+        '/storage/fs/store1/alicia/transformer/all/2021-11-12-05.json',
+        '/storage/fs/store1/alicia/transformer/all/2021-11-12-01.json',
+        '/storage/fs/store1/alicia/transformer/all/2023-01-19-01.json',
+        '/storage/fs/store1/alicia/transformer/all/2023-01-23-21.json',
+        '/storage/fs/store1/alicia/transformer/all/2021-05-26-07.json',
+        '/storage/fs/store1/alicia/transformer/all/2022-04-12-04.json',
+        '/storage/fs/store1/alicia/transformer/all/2023-01-19-08.json',
+        '/storage/fs/store1/alicia/transformer/all/2021-06-11-01.json']
+
 HEATSTIM = [
     "2021-09-06-09",
     "2021-09-14-01",
@@ -31,24 +52,27 @@ HEATSTIM = [
     "2023-01-18-01"
 ]
 
-HIGH_PUMPING_VAR = ['/storage/fs/store1/alicia/transformer/all/2022-01-09-01.json',
-                   '/storage/fs/store1/alicia/transformer/all/2022-04-14-04.json',
-                   '/storage/fs/store1/alicia/transformer/all/2021-09-22-05.json',
-                   '/storage/fs/store1/alicia/transformer/all/2021-08-17-01.json',
-                   '/storage/fs/store1/alicia/transformer/all/2023-01-19-22.json',
-                   '/storage/fs/store1/alicia/transformer/all/2023-01-23-01.json',
-                   '/storage/fs/store1/alicia/transformer/all/2023-01-19-15.json',
-                   '/storage/fs/store1/alicia/transformer/all/2021-11-12-05.json',
-                   '/storage/fs/store1/alicia/transformer/all/2021-11-12-01.json',
-                   '/storage/fs/store1/alicia/transformer/all/2023-01-19-01.json',
-                   '/storage/fs/store1/alicia/transformer/all/2023-01-23-21.json',
-                   '/storage/fs/store1/alicia/transformer/all/2022-06-14-07.json',
-                   '/storage/fs/store1/alicia/transformer/all/2023-01-23-08.json',
-                   '/storage/fs/store1/alicia/transformer/all/2021-05-26-07.json',
-                   '/storage/fs/store1/alicia/transformer/all/2022-08-02-01.json',
-                   '/storage/fs/store1/alicia/transformer/all/2022-04-12-04.json',
-                   '/storage/fs/store1/alicia/transformer/all/2023-01-19-08.json',
-                   '/storage/fs/store1/alicia/transformer/all/2021-06-11-01.json']
+HIGH_PUMPING_VAR = ['/storage/fs/store1/alicia/transformer/MC/2023-01-23-08.json',
+                    '/storage/fs/store1/alicia/transformer/MC/2022-06-14-07.json',
+                    '/storage/fs/store1/alicia/transformer/MC/2022-08-02-01.json',
+                    '/storage/fs/store1/alicia/transformer/all/2022-01-09-01.json',
+                    '/storage/fs/store1/alicia/transformer/all/2022-04-14-04.json',
+                    '/storage/fs/store1/alicia/transformer/all/2021-09-22-05.json',
+                    '/storage/fs/store1/alicia/transformer/all/2021-08-17-01.json',
+                    '/storage/fs/store1/alicia/transformer/all/2023-01-19-22.json',
+                    '/storage/fs/store1/alicia/transformer/all/2023-01-23-01.json',
+                    '/storage/fs/store1/alicia/transformer/all/2023-01-19-15.json',
+                    '/storage/fs/store1/alicia/transformer/all/2021-11-12-05.json',
+                    '/storage/fs/store1/alicia/transformer/all/2021-11-12-01.json',
+                    '/storage/fs/store1/alicia/transformer/all/2023-01-19-01.json',
+                    '/storage/fs/store1/alicia/transformer/all/2023-01-23-21.json',
+                    '/storage/fs/store1/alicia/transformer/all/2022-06-14-07.json',
+                    '/storage/fs/store1/alicia/transformer/all/2023-01-23-08.json',
+                    '/storage/fs/store1/alicia/transformer/all/2021-05-26-07.json',
+                    '/storage/fs/store1/alicia/transformer/all/2022-08-02-01.json',
+                    '/storage/fs/store1/alicia/transformer/all/2022-04-12-04.json',
+                    '/storage/fs/store1/alicia/transformer/all/2023-01-19-08.json',
+                    '/storage/fs/store1/alicia/transformer/all/2021-06-11-01.json']
 
 KFC_LABELS_PATH = "/store1/prj_jax/Aggregated_Traces_h5/dict_neuropal_label_prj_kfc.h5"
 KFC_PROCESSED_H5_PATH = "/store1/prj_kfc/data/processed_h5"
