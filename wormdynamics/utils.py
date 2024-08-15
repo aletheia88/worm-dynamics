@@ -230,7 +230,7 @@ def assemble_datasets(neuron_class: str, max_len: int, max_animals: int):
     }
 
 
-def assemble_traces_from_wormwideweb(files_path, neuron):
+def assemble_traces_from_wormwideweb(files_path, neuron, max_len):
 
     # find neuron index in each dataset
     dataset_paths = glob.glob(f"{files_path}/*.json")
@@ -256,15 +256,15 @@ def assemble_traces_from_wormwideweb(files_path, neuron):
                 neuron_id = int(n_id) - 1
                 trace_original = np.array(
                         data["trace_original"],
-                        dtype=np.float32)[:1600, neuron_id]
+                        dtype=np.float32)[:max_len, neuron_id]
                 pumping_rates = np.array(data["pumping"], dtype=np.float32)
 
                 ys.append(trace_original)
                 std_beh.append(
                         np.array([
-                            data["velocity"][:1600],
-                            data["head_curvature"][:1600],
-                            data["pumping"][:1600]]).T)
+                            data["velocity"][:max_len],
+                            data["head_curvature"][:max_len],
+                            data["pumping"][:max_len]]).T)
                 ds_included.append(dataset_name)
 
     print(f"Found {len(ds_included)} animals!")
@@ -314,25 +314,8 @@ def h5_to_dict(file_path: str) -> dict:
 
 if __name__ == "__main__":
     files_path = "/home/alicia/store1/alicia/transformer/all"
-    output = assemble_traces_from_wormwideweb(files_path, "MC")
+    output = filter_by_pumping(12.5)
     print(output["trace_original"].shape)
     print(output["behavior"].shape)
-    print(output["datasets"])
-    output = assemble_datasets("MC")
-    print(output["trace_original"].shape)
-    print(output["behavior"].shape)
-    print(output["datasets"])
-    """
-    mc_output = assemble_datasets("MC")
-    mcl_output = assemble_datasets("MCL")
-    mcr_output = assemble_datasets("MCR")
-
-    all_datasets = list(mc_output["datasets"].keys()) + \
-            list(mcl_output["datasets"].keys()) + \
-            list(mcr_output["datasets"].keys())
-    print(len(all_datasets))
-    print(all_datasets)
-    print(len(np.unique(all_datasets)))
-    print(np.unique(all_datasets))
-    """
+    print(len(output["datasets"]))
 
