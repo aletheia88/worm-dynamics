@@ -121,7 +121,7 @@ def assemble_datasets(neuron_class: str, max_len: int = 1600, max_animals: int =
                                   ['wt']).intersection(set(value["Tags"]))) > 0]
 
         neurons = [neuron for neuron in label_data.keys() if neuron.startswith(neuron_class)]
-
+        print(neurons)
         for neuron in neurons:
             for ds, items in label_data[neuron].items():
                 if ds in ds_of_interest and items['confidence'] > 3.5:
@@ -178,9 +178,7 @@ def assemble_traces_from_wormwideweb(files_path, neuron):
             data = json.load(f)
 
         # remove heatstim datasets
-        if "events" not in data.keys():
-            ds_included.append(dataset_name)
-        else:
+        if "events" in data.keys():
             continue
 
         for n_id, info_dict in data["labeled"].items():
@@ -199,6 +197,7 @@ def assemble_traces_from_wormwideweb(files_path, neuron):
                             data["velocity"][:1600],
                             data["head_curvature"][:1600],
                             data["pumping"][:1600]]).T)
+                ds_included.append(dataset_name)
 
     print(f"Found {len(ds_included)} animals!")
 
@@ -248,6 +247,10 @@ def h5_to_dict(file_path: str) -> dict:
 if __name__ == "__main__":
     files_path = "/home/alicia/store1/alicia/transformer/all"
     output = assemble_traces_from_wormwideweb(files_path, "MC")
+    print(output["trace_original"].shape)
+    print(output["behavior"].shape)
+    print(output["datasets"])
+    output = assemble_datasets("MC")
     print(output["trace_original"].shape)
     print(output["behavior"].shape)
     print(output["datasets"])
