@@ -158,7 +158,55 @@ def assemble_datasets(neuron_class: str, max_len: int = 1600, max_animals: int =
     return {
             "trace_original": np.array(ys),
             "behavior": np.array(std_beh),
-            "datasets": ds_included}
+            "datasets": ds_included
+    }
+
+
+def assemble_traces_from_wormwideweb(files_path, neuron):
+
+    # find neuron index in each dataset
+    dataset_paths = glob.glob(f"{files_path}/*.json")
+    ys = []
+    std_beh = []
+    ds_included = []
+
+    for dataset_path in dataset_paths:
+
+        dataset_name = dataset_path.split("/")[-1].split('.')[0]
+
+        with open(dataset_path, "r") as f:
+            data = json.load(f)
+
+        # remove heatstim datasets
+        if "events" not in data.keys():
+            ds_included.append(dataset_name)
+        else:
+            continue
+
+        for n_id, info_dict in data["labeled"].items():
+
+            if info_dict["label"].startswith(neuron):
+                # add neural and behavioral traces
+                neuron_id = int(n_id) - 1
+                trace_original = np.array(
+                        data["trace_original"],
+                        dtype=np.float32)[:1600, neuron_id]
+                pumping_rates = np.array(data["pumping"], dtype=np.float32)
+
+                ys.append(trace_original)
+                std_beh.append(
+                        np.array([
+                            data["velocity"][:1600],
+                            data["head_curvature"][:1600],
+                            data["pumping"][:1600]]).T)
+
+    print(f"Found {len(ds_included)} animals!")
+
+    return {
+        "trace_original": np.array(ys),
+        "behavior": np.array(std_beh),
+        "datasets": ds_included
+    }
 
 
 def h5_to_dict(file_path: str) -> dict:
@@ -195,4 +243,25 @@ def h5_to_dict(file_path: str) -> dict:
 
     with h5py.File(file_path, 'r') as file:
         return recursively_load_dict(file)
+
+
+if __name__ == "__main__":
+    files_path = "/home/alicia/store1/alicia/transformer/all"
+    output = assemble_traces_from_wormwideweb(files_path, "MC")
+    print(output["trace_original"].shape)
+    print(output["behavior"].shape)
+    print(output["datasets"])
+    """
+    mc_output = assemble_datasets("MC")
+    mcl_output = assemble_datasets("MCL")
+    mcr_output = assemble_datasets("MCR")
+
+    all_datasets = list(mc_output["datasets"].keys()) + \
+            list(mcl_output["datasets"].keys()) + \
+            list(mcr_output["datasets"].keys())
+    print(len(all_datasets))
+    print(all_datasets)
+    print(len(np.unique(all_datasets)))
+    print(np.unique(all_datasets))
+    """
 
