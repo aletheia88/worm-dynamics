@@ -109,7 +109,7 @@ def assemble_datasets(neuron_class: str, max_len: int = 1600, max_animals: int =
     std_beh = []
     ys = []
     reversals = []
-    ds_included = {}
+    ds_included = []
 
     for prj, data in prj_data.items():
 
@@ -133,29 +133,30 @@ def assemble_datasets(neuron_class: str, max_len: int = 1600, max_animals: int =
                     if(len(ys) == max_animals):
                         break
 
-                    if ds not in ds_included.keys():
-                        ds_included[ds] = {}
+                    if ds not in ds_included:
+
                         timing = loaded_data["timing"]
 
-                        if "stim_begin_confocal" in timing.keys():
-                            ds_included[ds]["heatstim"] = True
-                            ds_included[ds]["stim_begin_confocal"] = int(
-                                    timing["stim_begin_confocal"][0])
-                        else:
-                            ds_included[ds]["heatstim"] = False
+                        if "stim_begin_confocal" not in timing.keys():
 
-                        std_beh.append(np.array([loaded_data['behavior']["velocity"][:max_len],
-                                             loaded_data['behavior']["head_angle"][:max_len]
-                                             * (-1 if structure_data[ds]['Flipped'] else
-                                                1),
-                                             loaded_data['behavior']["pumping"][:max_len]]).T)
-                        ys.append(loaded_data['gcamp']['trace_array_original'][:max_len,
-                                                                               items['index']-1])
-                        reversals.append(loaded_data['behavior']['reversal_events'].T)
+                            ds_included.append(ds)
+
+                            std_beh.append(np.array([
+                                loaded_data['behavior']["velocity"][:max_len],
+                                loaded_data['behavior']["head_angle"][:max_len] * \
+                                        (-1 if structure_data[ds]['Flipped'] else 1),
+                                loaded_data['behavior']["pumping"][:max_len]]).T)
+
+                            ys.append(
+                                loaded_data['gcamp']['trace_array_original'][:max_len,
+                                                                             items['index']-1])
+
+                            reversals.append(loaded_data['behavior']['reversal_events'].T)
 
     print(f"Found {len(ds_included)} animals")
 
-    return {"trace_original": np.array(ys),
+    return {
+            "trace_original": np.array(ys),
             "behavior": np.array(std_beh),
             "datasets": ds_included}
 
