@@ -6,52 +6,6 @@ import json
 import numpy as np
 
 
-def filter_pumping_datasets(remove_heatstim: bool, remove_lowvar: bool):
-    """ Filter datasets to retain only those where the difference between the 
-    75th percentile and the 25th percentile of the pumping rate exceeds 0.5. """
-
-    # 104 dataset paths in total
-    dataset_paths = glob.glob("/storage/fs/store1/alicia/transformer/MC/*.json") + \
-            glob.glob("/storage/fs/store1/alicia/transformer/all/*.json")
-    filtered_dataset_paths = []
-    unique_datasets = []
-
-    for dataset_path in tqdm(dataset_paths):
-
-        # remove heatstim datasets
-        if remove_heatstim:
-
-            if "all" in dataset_path:
-                if any(dataset in dataset_path for dataset in HEATSTIM):
-                    continue
-                else:
-                    with open(dataset_path, "r") as f:
-                        data = json.load(f)
-                        pumping_rates = np.array(data["pumping"], dtype=np.float32)
-            else:
-                with open(dataset_path, "r") as f:
-                    data = json.load(f)
-                if not data["heatstim"]:
-                    pumping_rates = np.array(data["pumping"], dtype=np.float32)
-
-            if remove_lowvar:
-                if np.percentile(pumping_rates, 75) - \
-                        np.percentile(pumping_rates, 25) > 0.5:
-
-                    dataset_name = dataset_path.split('/')[-1].split('.json')[0]
-                    if dataset_name not in unique_datasets:
-                        filtered_dataset_paths.append(dataset_path)
-                        unique_datasets.append(dataset_name)
-            else:
-                raise NotImplementedError("filtering not yet implemented")
-
-        # keep the no-stim part in heatstim datasets 
-        else:
-            raise NotImplementedError("filtering not yet implemented")
-
-    return filtered_dataset_paths
-
-
 def write_to_json(neuron_class: str, file_path: str):
 
     trace_dict = assemble_datasets(neuron_class)
@@ -77,7 +31,121 @@ def write_to_json(neuron_class: str, file_path: str):
         json.dump(json_dict, f, indent=4)
 
 
-def assemble_datasets(neuron_class: str, max_len: int = 1600, max_animals: int = 94):
+def filter_by_pumping(cutoff):
+
+    output = assemble_all("MC")
+    filtered_trace_original = []
+    filtered_behavior = []
+    filtered_datasets = []
+
+    for idx, dataset_name in enumerate(output["datasets"]):
+
+        pumping = np.percentile(output["behavior"][idx, :, 2], cutoff)
+        if pumping == 0:
+            filtered_trace_original.append(output['trace_original'][idx])
+            filtered_behavior.append(output['behavior'][idx])
+            filtered_datasets.append(dataset_name)
+
+    return {
+        "trace_original": np.array(filtered_trace_original),
+        "behavior": np.array(filtered_behavior),
+        "datasets": filtered_datasets
+    }
+
+
+def assemble_all(neuron_class: str, max_len: int = 1600, max_animals: int = 94):
+    """ Combine neural trace and behavior data from two output dictionaries based on
+    unique datasets.
+
+    This function takes two dictionaries, each containing keys 'trace_original',
+    'behavior', and 'datasets'. It identifies unique datasets across both dictionaries,
+    and combines the 'trace_original' and 'behavior' data corresponding to these unique
+    datasets. The combined data is assembled into a new dictionary.
+
+    Args:
+        output1 (dict): First dictionary containing the keys:
+            - 'trace_original' (np.ndarray): Neural trace data with shape (n1, 1600)
+              where n1 is the number of entries.
+            - 'behavior' (np.ndarray): Behavior data with shape (n1, 1600, 3).
+            - 'datasets' (list): List of dataset identifiers.
+        output2 (dict): Second dictionary similar to output1 but may contain different
+        datasets and data lengths.
+
+    Returns:
+        dict: A dictionary with the following structure:
+            - 'trace_original' (np.ndarray): Combined neural trace data from unique datasets.
+            - 'behavior' (np.ndarray): Combined behavior data from unique datasets.
+            - 'datasets' (list): List of all unique datasets.
+
+    Assumes:
+        - Each dataset identifier in 'datasets' is unique within its respective
+          dictionary but may overlap between dictionaries.
+        - The 'trace_original' and 'behavior' data for each dataset are aligned by their
+          first dimension in the respective dictionaries.
+        - The function does not handle duplicate datasets across the dictionaries; it
+          assumes dataset identifiers are unique or completely non-overlapping.
+
+    Example:
+        >>> output1 = {
+            "trace_original": np.random.rand(22, 1600),
+            "behavior": np.random.rand(22, 1600, 3),
+            "datasets": ['ds1', 'ds2']
+        }
+        >>> output2 = {
+            "trace_original": np.random.rand(25, 1600),
+            "behavior": np.random.rand(25, 1600, 3),
+            "datasets": ['ds3', 'ds4']
+        }
+        >>> combined_data = combine_unique_datasets(output1, output2)
+        >>> print(combined_data['datasets'])
+        ['ds1', 'ds2', 'ds3', 'ds4']
+        >>> print(combined_data['trace_original'].shape)
+        (47, 1600)
+        >>> print(combined_data['behavior'].shape)
+        (47, 1600, 3) """
+
+    files_path = "/home/alicia/store1/alicia/transformer/all"
+    output1 = assemble_traces_from_wormwideweb(files_path, "MC", max_len)
+    output2 = assemble_datasets("MC", max_len, max_animals)
+
+    # find unique datasets
+    unique_datasets = set(output1['datasets']).union(set(output2['datasets']))
+
+    # initialize arrays to store combined data
+    combined_trace_original = []
+    combined_behavior = []
+    combined_datasets = []
+
+    # filter and combine data for unique datasets
+    for ds in unique_datasets:
+        if ds in output1['datasets']:
+            idx = output1['datasets'].index(ds)
+            combined_trace_original.append(output1['trace_original'][idx])
+            combined_behavior.append(output1['behavior'][idx])
+            combined_datasets.append(ds)
+        if ds in output2['datasets']:
+            idx = output2['datasets'].index(ds)
+            combined_trace_original.append(output2['trace_original'][idx])
+            combined_behavior.append(output2['behavior'][idx])
+            combined_datasets.append(ds)
+
+    # convert lists to numpy arrays
+    combined_trace_original = np.array(combined_trace_original)
+    combined_behavior = np.array(combined_behavior)
+
+    # final combined dictionary
+    final_output = {
+        "trace_original": combined_trace_original,
+        "behavior": combined_behavior,
+        "datasets": combined_datasets
+    }
+
+    print(f"Found total {len(combined_datasets)} animals!")
+
+    return final_output
+
+
+def assemble_datasets(neuron_class: str, max_len: int, max_animals: int):
     """ Extract neural and behavioral traces from all datasets containing the specified
     neuron class.
 
