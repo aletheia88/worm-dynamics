@@ -8,8 +8,9 @@ import numpy as np
 
 def write_to_json(neuron_class: str, file_path: str):
 
-    trace_dict = assemble_datasets(neuron_class)
+    trace_dict = filter_by_pumping(12.5)
     std_beh = ["velocity", "head_angle", "pumping"]
+    dataset_names = []
 
     for n, dataset in tqdm(enumerate(trace_dict["datasets"])):
 
@@ -20,15 +21,17 @@ def write_to_json(neuron_class: str, file_path: str):
         json_dict["head_angle"] = trace_dict["behavior"][n, :, 1].tolist()
         json_dict["pumping"] = trace_dict["behavior"][n, :, 2].tolist()
 
-        heatstim_dict = trace_dict["datasets"][dataset]
-        json_dict["heatstim"] = heatstim_dict["heatstim"]
-        if json_dict["heatstim"]:
-            json_dict["stim_begin_confocal"] = heatstim_dict["stim_begin_confocal"]
+        if dataset in dataset_names:
+            dataset_name = f"{dataset}-{n}"
         else:
-            json_dict["stim_begin_confocal"] = -1
+            dataset_name = dataset
 
-    with open(f"{file_path}/{dataset}.json", "w") as f:
-        json.dump(json_dict, f, indent=4)
+        with open(f"{file_path}/{dataset_name}.json", "w") as f:
+            json.dump(json_dict, f, indent=4)
+
+        dataset_names.append(dataset)
+
+    print("All datasets processed and written!")
 
 
 def filter_by_pumping(cutoff):
@@ -45,6 +48,8 @@ def filter_by_pumping(cutoff):
             filtered_trace_original.append(output['trace_original'][idx])
             filtered_behavior.append(output['behavior'][idx])
             filtered_datasets.append(dataset_name)
+
+    print(f"post-filtering: {len(filtered_datasets)} animals")
 
     return {
         "trace_original": np.array(filtered_trace_original),
@@ -313,9 +318,6 @@ def h5_to_dict(file_path: str) -> dict:
 
 
 if __name__ == "__main__":
-    files_path = "/home/alicia/store1/alicia/transformer/all"
-    output = filter_by_pumping(12.5)
-    print(output["trace_original"].shape)
-    print(output["behavior"].shape)
-    print(len(output["datasets"]))
+    files_path = "/home/alicia/store1/alicia/transformer/filtered_MC_pumping"
+    write_to_json("MC", files_path)
 
