@@ -24,16 +24,7 @@ class WormDataset(Dataset):
         self.neuron_columns = {}    # column indices of actual neurons
         self.behavior_columns = {}  # column indices of animal behaviors
 
-        # data_parameters.dataset_paths should be set to .JSON paths under `all`
-        self.neuron_id_per_dataset = self._map_neurons(
-                data_parameters.all_paths)
-        
-        """self.dataset_paths = self._filter_datasets(
-                data_parameters.dataset_paths)"""
-
-        #self.dataset_paths = HIGH_PUMPING_NO_HEATSTIM
         self.dataset_paths = data_parameters.dataset_paths
-
         self.labels = [path.split("/")[-1].split('.')[0] for path in
                        self.dataset_paths]
 
@@ -55,11 +46,12 @@ class WormDataset(Dataset):
 
         normalized_data = self.assemble_raw_MC_pumping_data()
         num_samples = normalized_data.shape[0]
+
+        normalized_data[:, :, 0] = self._normalize_MC(normalized_data[:, :, 0])
+
         for i in range(num_samples):
-            normalized_data[i, :, 0] = self._normalize_MC(
-                    normalized_data[i, :, 0])
-            normalized_data[i, :, 1] = self._normalize_pumping(
-                    normalized_data[i, :, 1])
+            normalized_data[i, :, 1] = self._normalize_pumping(normalized_data[i, :, 1])
+
         return normalized_data
 
     def assemble_raw_MC_pumping_data(self):
@@ -69,55 +61,21 @@ class WormDataset(Dataset):
         Reads in the MC and pumping activity data for each animal and consolidates it
         into a single multidimensional array.
 
-        Args:
-            chunk (bool): whether to chunk from where heatstim is applied
-
         Returns:
             numpy.ndarray: A 3D array with shape (num_animals, sequence_length, 2) where
             each element contains the MC and pumping activity data for each animal over
             a sequence of time. """
 
         assembled_dataset = []
-        # dataloading is different based on dataset paths
         for dataset_path in self.dataset_paths:
             with open(dataset_path, "r") as f:
                 data = json.load(f)
 
-            if "all" in dataset_path:
-                dataset_name = dataset_path.split("/")[-1].split(".")[0]
-                id_dict = self.neuron_id_per_dataset[dataset_name]
-
-                if "MC" in id_dict.keys():
-                    mc_id = int(id_dict["MC"])
-                    trace_original = np.array(data["trace_original"],
-                                              dtype=np.float32)[:1600, mc_id]
-                    pumping_rates = np.array(data["pumping"], dtype=np.float32)
-                else:
-                    continue
-            else:
-                trace_original = np.array(data["trace_original"], dtype=np.float32)
-                pumping_rates = np.array(data["pumping"], dtype=np.float32)
-
+            trace_original = np.array(data["trace_original"], dtype=np.float32)
+            pumping_rates = np.array(data["pumping"], dtype=np.float32)
             assembled_dataset.append(np.column_stack((trace_original, pumping_rates)))
 
         return np.array(assembled_dataset)
-
-    def _filter_datasets(self, dataset_paths):
-        """ Select datasets that contain all neurons of interest. """
-
-        if self.take_all:
-            return dataset_paths
-        elif self.neurons:
-            filtered_dataset_paths = []
-            for dataset_path in dataset_paths:
-                dataset_name = dataset_path.split("/")[-1].split('.')[0]
-
-                if set(list(self.neuron_id_per_dataset[dataset_name].keys()
-                        )) == set(self.neurons):
-                    filtered_dataset_paths.append(dataset_path)
-            return filtered_dataset_paths
-        else:
-            raise ValueError("Needs to indicate which neurons to take.")
 
     def _map_neurons(self, dataset_paths):
 
@@ -207,6 +165,7 @@ class WormDataset(Dataset):
         """ neural activities and behaviors with normalization """
 
         assembled_dataset = []
+
         for dataset_path in self.dataset_paths:
 
             dataset_name = dataset_path.split("/")[-1].split('.')[0]
@@ -216,7 +175,8 @@ class WormDataset(Dataset):
 
             with open(dataset_path, "r") as f:
                 data = json.load(f)
-                trace = np.array(data["trace_array"], dtype=np.float32).T
+                trace = np.array(data["trace_original"], dtype=np.float32)
+                #trace = np.array(data["trace_array"], dtype=np.float32).T
 
             # how to assemble dataset from `take_columns`
             # |take_columns| < |neurons| + |behaviors|
@@ -274,18 +234,6 @@ class WormDataset(Dataset):
 
     def augment_with_gaussian_noise(self, inputs, label):
 
-        """
-        # inputs has shape (1, 1600, d)
-        gfp_dataset_name = random.choice(
-                ["2022-01-07-03", "2022-03-16-01", "2022-03-16-02"])
-        gfp_dataset_path = \
-        f"/home/alicia/store1/alicia/transformer/GFP/{gfp_dataset_name}.json"
-
-        with open(gfp_dataset_path, "r") as f:
-            data = json.load(f)
-            gfp_stdev = np.std(np.array(data["trace_array"],
-                                        dtype=np.float32).T)
-        """
         org_inputs = inputs.detach().cpu().numpy().astype(np.float32)
         augmented_inputs = copy.deepcopy(org_inputs)
         for col in self.neuron_columns[label]:
@@ -423,7 +371,11 @@ class WormDataset(Dataset):
         return data / 2 - 1
 
     def _normalize_MC(self, data):
-        return data / (3 * np.percentile(data, 10)) - 1
+        p10 = np.percentile(data, 10)
+        print(f"p10 = {p10}")
+        return data / (3 * p10) - 1
+
+        #return data / (3 * np.percentile(data, 10)) - 1
 
     def __getitem__(self, index):
         x = self.input_embeddings[index]
@@ -436,12 +388,12 @@ class WormDataset(Dataset):
 
 def test():
 
-    dataset_paths = glob.glob(f"/storage/fs/store1/alicia/transformer/all/*.json")
     data_parameters = DataParameters(
-            dataset_paths,
+            all_paths = glob.glob(f"/storage/fs/store1/alicia/transformer/all/*.json"),
+            dataset_paths = glob.glob(f"/storage/fs/store1/alicia/transformer/all/*.json"),
             neurons = ["MC"], # used in `_map_neurons`
             behaviors = ["pumping"], # used in `_map_neurons`
-            noise_multiplier = 0.12, # not used
+            noise_multiplier = 0.0, # not used
             num_to_augment = 0, # not used
             take_all = False, # not used
             ignore_LRDV = True, # used in `_map_neurons`
