@@ -80,9 +80,19 @@ class CElegansDataset(torch.utils.data.Dataset):
 
 class CElegansDatasetPlus(torch.utils.data.Dataset):
 
-    def __init__(self, path, window_stride, window_size, device, slices=None):
+    def __init__(
+            self,
+            data_path,
+            dataset_path,
+            window_stride,
+            window_size,
+            device,
+            slices=None
+        ):
 
-        self.data = np.load(path).astype("float32")
+        self.data = np.load(data_path).astype("float32")
+        self.datasets = np.load(dataset_path)
+
         if slices:
             self.data = self.data[:, :, slices]
         self.window_stride = window_stride
@@ -109,7 +119,7 @@ class CElegansDatasetPlus(torch.utils.data.Dataset):
                 self.data[worm, :, start_frame:end_frame],
                 device=self.device,
                 dtype=torch.float32
-            ), worm, start_frame, end_frame - 1
+            ), worm, start_frame, end_frame - 1, self.datasets[worm]
 
 
 if __name__ == "__main__":
@@ -118,19 +128,21 @@ if __name__ == "__main__":
     window_stride = 400
     window_size = 400
     batch_size = 1
-    training_dataset = CElegansDatasetPlus(
-        "../../data/AVA_MC_test.npy",
+    dataset = CElegansDatasetPlus(
+        "../../data/AVA_MC_all_test.npy",
+        "../../data/AVA_MC_all_test_ds.npy",
         window_stride=window_stride,
         window_size=window_size,
         device=device,
         slices=slice(0, 1600)
     )
-    training_dataloader = torch.utils.data.DataLoader(
-        training_dataset,
+    dataloader = torch.utils.data.DataLoader(
+        dataset,
         batch_size=batch_size,
         shuffle=False
     )
-    for n_iter, (inputs, worm, start_frame, end_frame) in enumerate(training_dataloader):
+    for n_iter, (inputs, worm, start_frame, end_frame, ds) in enumerate(dataloader):
         print(f'Iteration: {n_iter}')
         print(f'inputs: {inputs.shape}')
+        print(f'dataset name: {ds[0]}')
         print(f'worm: {worm.item()} (start, end): {(start_frame.item(), end_frame.item())}')

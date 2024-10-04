@@ -10,6 +10,7 @@ import torch
 
 @torch.no_grad()
 def reconstruct_traces(
+        data_path,
         dataset_path,
         model,
         model_ckpt_path,
@@ -27,7 +28,8 @@ def reconstruct_traces(
 
     Example:
         >>> prj_directory = '/home/alicia/notebook/alicia/attention_predict'
-        >>> dataset_path = f'{prj_directory}/data/AVA_MC_test.npy'
+        >>> data_path = f'{prj_directory}/data/AVA_MC_test.npy'
+        >>> dataset_path = f'{prj_directory}/data/AVA_MC_test_ds.npy'
         >>> device = 'cuda:2'
         >>> window_size = 50
         >>> window_stride = 1 # Default is 1
@@ -48,6 +50,7 @@ def reconstruct_traces(
         >>>    device=device
         >>> ).to(device)
         >>> reconstructed_traces = reconstruct_traces(
+        >>>        data_path,
         >>>        dataset_path,
         >>>        model,
         >>>        model_ckpt_path,
@@ -57,9 +60,10 @@ def reconstruct_traces(
         >>>        window_stride,
         >>>        device)
     """
-    num_worms = np.load(dataset_path).shape[0]
+    num_worms = np.load(data_path).shape[0]
 
     dataset = CElegansDatasetPlus(
+        data_path,
         dataset_path,
         window_stride=window_stride,
         window_size=window_size,
@@ -94,20 +98,24 @@ def reconstruct_traces(
             }
     elif model_type == 'unet':
         reconstructed_traces = {
-                worm: {
+            worm: { 
+                'dataset': None,
+                **{
                     mask_index: {
                         'ground_truth': [],
                         'prediction': [],
                         'frames': [],
-                        'mse': []
+                        'mse': [],
                     } for mask_index in range(num_inputs)
-                } for worm in range(num_worms)
-            }
+                }
+            } for worm in range(num_worms)
+        }
 
-    for i, (inputs, worm, start_frame, end_frame) in tqdm(enumerate(dataloader)):
+    for i, (inputs, worm, start_frame, end_frame, ds) in tqdm(enumerate(dataloader)):
 
         append = False
         idx = worm.item()
+        reconstructed_traces[idx]['dataset'] = ds
 
         if start_frame.item() == right_slider:
             append = True
