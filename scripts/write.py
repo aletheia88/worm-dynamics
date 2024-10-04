@@ -12,6 +12,7 @@ def split_train_valid_test(
         save=True
 ):
     data = np.load(f'../data/{ds_name}.npy')
+    datasets = np.load(f'../data/{ds_name}_datasets.npy')
     num_datasets = data.shape[0]
 
     train_size = int(num_datasets * split_ratio[0])
@@ -30,10 +31,18 @@ def split_train_valid_test(
     valid_set = data[valid_indices, :, :]
     test_set = data[test_indices, :, :]
 
+    train_datasets = datasets[train_indices]
+    valid_datasets = datasets[valid_indices]
+    test_datasets = datasets[test_indices]
+
     if save:
         np.save(f'../data/{ds_name}_train.npy', train_set)
         np.save(f'../data/{ds_name}_valid.npy', valid_set)
         np.save(f'../data/{ds_name}_test.npy', test_set)
+        # Also save the corresponding dataset names
+        np.save(f'../data/{ds_name}_train_ds.npy', train_datasets)
+        np.save(f'../data/{ds_name}_valid_ds.npy', valid_datasets)
+        np.save(f'../data/{ds_name}_test_ds.npy', test_datasets)
         print(f'Train/Valid/Test splits for {ds_name} saved!')
     else:
         return train_set, valid_set, test_set
@@ -58,14 +67,15 @@ def write_data_with_missing_neurons(neuron_classes, max_len, file_name):
     # GCaMP traces shape: (n, 1600, m)
     # behavior traces shape: (n, 1600, k)
     # Note: traces are already normalized during assembling
-    assembled_gcamp_traces, assembled_behaviors, _ = assemble_data_with_missing_neurons(
-            neuron_classes, max_len)
+    assembled_gcamp_traces, assembled_behaviors, assembled_datasets = \
+            assemble_data_with_missing_neurons(neuron_classes, max_len)
 
     assembled_traces = np.concatenate(
             (assembled_gcamp_traces, assembled_behaviors),
             axis=2).transpose(0, 2, 1)
 
     np.save(f'../data/{file_name}.npy', assembled_traces)
+    np.save(f'../data/{file_name}_datasets.npy', np.array(assembled_datasets))
     print(f'{file_name} written under data folder.')
 
 
