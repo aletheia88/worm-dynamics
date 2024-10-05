@@ -392,8 +392,8 @@ def load_single_neuron_class(
                     std_behaviors.append(
                             np.array([
                                 behaviors["velocity"][:max_len],
-                                # behaviors["head_angle"][:max_len] * flip_factor,
-                                behaviors["pumping"][:max_len]]).T)
+                                behaviors["pumping"][:max_len],
+                                behaviors["head_angle"][:max_len] * flip_factor]).T)
                     gcamp_traces.append(gcamp_data[:max_len, items["index"] - 1])
                     datasets.append(ds)
             if verbose:
@@ -434,10 +434,16 @@ def assemble_data_with_missing_neurons(neuron_classes, max_len):
         std_behaviors[:, :, 0] = 10 * std_behaviors[:, :, 0]
         # Assuming pumping corresponds to column 1
         std_behaviors[:, :, 1] = std_behaviors[:, :, 1] / 2 - 1
+        # Assuming head curvature corresponds to column 2
+        head_angle = std_behaviors[:, :, 2]
+        min_val = np.min(head_angle)
+        max_val = np.max(head_angle)
+        std_behaviors[:, :, 2] = 2 * ((head_angle - min_val) / (max_val - min_val)) - 1
 
         all_data[neuron_class]['gcamp_traces'] = gcamp_traces
         all_data[neuron_class]['std_behaviors'] = std_behaviors
         all_data[neuron_class]['datasets'] = datasets
+        print(f'{neuron_class} ds: {datasets}')
 
     max_datasets = max([len(all_data[neuron_class]['datasets'])
                         for neuron_class in neuron_classes])
@@ -524,7 +530,7 @@ if __name__ == "__main__":
     # print([(ds, std_beh.shape) for ds, std_beh in std_behaviors.items()])
 
     ### Load datasets that contain a single neuron class ###
-    # neuron_class = 'MC'
+    # neuron_class = 'SMDV'
     # gcamp_traces, std_behaviors, reversals, datasets = load_single_neuron_class(
     #         neuron_class,
     #         verbose=True)
@@ -534,7 +540,7 @@ if __name__ == "__main__":
     # print(f'num unique datasets: {len(np.unique(datasets))}')
 
     ### Assemble datasets which include missing neurons
-    neuron_classes = ['AVA', 'MC']
+    neuron_classes = ['AVA', 'MC', 'SMDV']
     max_len = 1600
     assembled_gcamp_traces, assembled_behaviors, assembled_datasets = \
         assemble_data_with_missing_neurons(neuron_classes, max_len)

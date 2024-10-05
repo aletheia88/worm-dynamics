@@ -240,7 +240,7 @@ if __name__ == "__main__":
     # write_all_behaviors(max_len, save=True)
 
     ### Split into training, validation, and testing datasets
-    ds_name = 'AVA_MC_all'
+    ds_name = 'AVA_MC_SMDV'
     random_seed = 1912 # Alan Turing's random seed
     split_train_valid_test(ds_name, random_seed=random_seed)
 
@@ -255,7 +255,7 @@ if __name__ == "__main__":
     # write_specific_pairings(neuron_class, max_len, file_name)
 
     ### Assemble data with missing neurons
-    # neuron_classes = ['AVA', 'MC']
+    # neuron_classes = ['AVA', 'MC', 'SMDV']
     # max_len = 1600
-    # file_name = 'AVA_MC_all'
+    # file_name = 'AVA_MC_SMDV'
     # write_data_with_missing_neurons(neuron_classes, max_len, file_name)
