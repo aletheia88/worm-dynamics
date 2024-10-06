@@ -27,8 +27,16 @@ def get_mask_indices(recorded_neuron_indices,
                      num_inputs,
                      neuron_indices,
                      behavior_indices):
-
-    mask_indices = {}
+    """
+    Function observes the following masking scheme -
+    FOR NEURONS
+        * Randomly masking out AVA or MC if both are recorded;
+        * Automatically masking out MC if only AVA is recorded.
+    FOR BEHAVIORS
+    * Randomly masking out one behavior;
+    * Masking out pumping if AVA is masked; masking out velocity if MC is masked.
+    """
+    mask_indices = {} # keys correspond to sample index in a batch
     all_indices = list(range(num_inputs))
 
     for n in recorded_neuron_indices.keys():
@@ -48,6 +56,30 @@ def get_mask_indices(recorded_neuron_indices,
         # Randomly select behavior without neuron-behavior pairing priors
         behavior_index = np.random.choice(behavior_indices)
         mask_indices[n] = [neuron_index, behavior_index]
+
+    return mask_indices
+
+
+def get_mask_indices_v1(
+        num_inputs,
+        recorded_neuron_indices,
+        neuron_indices,
+        num_mask_indices=3):
+    """
+    Selects three columns to mask out acccording to the following scheme -
+    FOR NEURONS and BEHAVIORS
+        * Automatically masking out the missing neurons (maximum possible is 2);
+        * Randomly select (3 - # missing neurons) columns to mask out
+    """
+    mask_indices = {}
+    all_indices = list(range(num_inputs))
+
+    for n in recorded_neuron_indices.keys():
+        neuron_mask_indices = list(set(neuron_indices) - set(recorded_neuron_indices[n]))
+        remaining_indices = list(set(all_indices) - set(neuron_mask_indices))
+        num_to_be_masked = num_mask_indices - len(neuron_mask_indices)
+        rest_mask_indices = np.random.choice(remaining_indices, num_to_be_masked)
+        mask_indices[n] = neuron_mask_indices + rest_mask_indices.tolist()
 
     return mask_indices
 
@@ -111,8 +143,7 @@ def train(
 
         loss_average = 0
 
-        for n_iter, (inputs, worm, start_frame, end_frame) in \
-            enumerate(training_dataloader):
+        for n_iter, (inputs, _, _, _, _) in enumerate(training_dataloader):
 
             if n_iter == num_iterations:
                 break
@@ -121,8 +152,8 @@ def train(
             # Find which neurons are recorded per sample in a batch
             recorded_neuron_indices = get_recorded_neuron_indices(targets, num_neurons)
             # Apply masking to each sample according to which neurons are recorded
-            mask_indices = get_mask_indices(recorded_neuron_indices, num_inputs,
-                                            neuron_indices, behavior_indices)
+            mask_indices = get_mask_indices_v1(num_inputs, recorded_neuron_indices,
+                                               neuron_indices)
             for n in mask_indices.keys():
                 inputs[n, mask_indices[n], :] = 0
 
@@ -137,15 +168,15 @@ def train(
 
         # Estimate loss on validation datasets
         loss_dict['training'].append(loss_average / num_batches)
-        loss_dict['validation'].append(validate(
-                model,
-                validation_dataloader,
-                optimizer,
-                num_iterations,
-                num_inputs,
-                num_neurons,
-                neuron_indices,
-                behavior_indices))
+        # loss_dict['validation'].append(validate(
+        #         model,
+        #         validation_dataloader,
+        #         optimizer,
+        #         num_iterations,
+        #         num_inputs,
+        #         num_neurons,
+        #         neuron_indices,
+        #         behavior_indices))
 
         with open(f'{log_directory}/losses.json', 'w') as f:
             json.dump(loss_dict, f, indent=4)
@@ -228,18 +259,21 @@ if __name__ == "__main__":
     device = "cuda:2"
     window_size = 400
     window_stride = 1
-    ds_name = 'AVA_MC_all'
+    ds_name = 'AVA_MC_SMDV'
     batch_size = 32
+    base = '/home/alicia/notebook/alicia/worm-dynamics'
 
     training_dataset = CElegansDatasetPlus(
-        f'../data/{ds_name}_train.npy',
+        f'{base}/data/{ds_name}_train.npy',
+        f'{base}/data/{ds_name}_train_ds.npy',
         window_stride=window_stride,
         window_size=window_size,
         device=device,
         slices=slice(0, 1600)
     )
     validation_dataset = CElegansDatasetPlus(
-        f'../data/{ds_name}_valid.npy',
+        f'{base}/data/{ds_name}_valid.npy',
+        f'{base}/data/{ds_name}_valid_ds.npy',
         window_stride=window_stride,
         window_size=window_size,
         device=device,
@@ -247,18 +281,18 @@ if __name__ == "__main__":
     )
 
     depth = 5
-    in_channels = np.load(f'../data/{ds_name}.npy').shape[1]
+    in_channels = np.load(f'{base}/data/{ds_name}.npy').shape[1]
     out_channels = in_channels
     unet_dim = 1
     num_iterations = 1_000_000
     num_epochs = 1000
     learning_rate = 1e-4
-    exp_name = 'exp_2024100102'
+    exp_name = 'exp_2024100501'
     log_directory = f'/home/alicia/store1/alicia/attention_predict/{exp_name}'
     log_ckpt_freq = 10
     random_seed = 1912 # Alan Turing's birthday :)
 
-    num_neurons = 2
+    num_neurons = 3
 
     model = UNet(
             depth, in_channels, out_channels, unet_dim=unet_dim
