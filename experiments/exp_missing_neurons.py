@@ -33,8 +33,8 @@ def get_mask_indices(recorded_neuron_indices,
         * Randomly masking out AVA or MC if both are recorded;
         * Automatically masking out MC if only AVA is recorded.
     FOR BEHAVIORS
-    * Randomly masking out one behavior;
-    * Masking out pumping if AVA is masked; masking out velocity if MC is masked.
+        * Randomly masking out one behavior;
+        * Masking out pumping if AVA is masked; masking out velocity if MC is masked.
     """
     mask_indices = {} # keys correspond to sample index in a batch
     all_indices = list(range(num_inputs))
