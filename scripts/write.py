@@ -1,5 +1,5 @@
 from load import (
-        assemble, load_behaviors_from_all_neuropal, load_single_neuron_class,
+        assemble, load_behaviors, load_single_neuron_class,
         assemble_data_with_missing_neurons)
 from copy import deepcopy
 import numpy as np
@@ -7,7 +7,7 @@ import numpy as np
 
 def split_train_valid_test(
         ds_name,
-        split_ratio=[0.7, 0.2, 0.1],
+        split_ratio=[0.8, 0.1, 0.1],
         random_seed=42,
         save=True
 ):
@@ -48,18 +48,22 @@ def split_train_valid_test(
         return train_set, valid_set, test_set
 
 
-def write_all_behaviors(max_len):
+def write_behaviors(max_len, ds_name):
 
-    std_behaviors, _ = load_behaviors_from_all_neuropal(max_len)
-    for ds in std_behaviors.keys():
-        # normalize velocity
-        std_behaviors[ds][:, 0] = 10 * std_behaviors[ds][:, 0]
-        # normalize pumping
-        std_behaviors[ds][:, 2] = std_behaviors[ds][:, 2] / 2 - 1
+    std_behaviors, _, datasets = load_behaviors(max_len)
+    # Normalize velocity
+    std_behaviors[:, :, 0] = 10 * std_behaviors[:, :, 0]
+    # Normalize head angle
+    head_angle = std_behaviors[:, :, 1]
+    min_val = np.min(head_angle)
+    max_val = np.max(head_angle)
+    std_behaviors[:, :, 1] = 2 * ((head_angle - min_val) / (max_val - min_val)) - 1
 
-    assembled_behaviors = np.stack(list(std_behaviors.values()), axis=0)
-    np.save(f'../data/all_behaviors.npy', assembled_behaviors)
-    print('All behaviors saved!')
+    # Normalize pumping
+    # std_behaviors[:, :, 2] = std_behaviors[ds][:, 2] / 2 - 1
+    np.save(f'../data/{ds_name}.npy', std_behaviors.transpose(0, 2, 1))
+    np.save(f'../data/{ds_name}_datasets.npy', datasets)
+    print(f'{ds_name} saved!')
 
 
 def write_data_with_missing_neurons(neuron_classes, max_len, file_name):
@@ -237,10 +241,12 @@ if __name__ == "__main__":
     # write_to_npy(neuron_classes, max_len, max_animals)
 
     ### Write all behavioral data to npy file
-    # write_all_behaviors(max_len, save=True)
+    max_len = 1600
+    ds_name = 'velocity_headangle'
+    write_behaviors(max_len, ds_name)
 
     ### Split into training, validation, and testing datasets
-    ds_name = 'AVA_MC_SMDV'
+    ds_name = 'velocity_headangle'
     random_seed = 1912 # Alan Turing's random seed
     split_train_valid_test(ds_name, random_seed=random_seed)
 

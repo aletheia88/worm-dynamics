@@ -5,7 +5,7 @@ import json
 import numpy as np
 
 
-def load_behaviors_from_all_neuropal(max_len: int):
+def load_behaviors(max_len: int):
 
     kfc_labels = "/store1/prj_jax/Aggregated_Traces_h5/dict_neuropal_label_prj_kfc.h5"
     kfc_h5 = "/store1/prj_kfc/data/processed_h5"
@@ -27,40 +27,43 @@ def load_behaviors_from_all_neuropal(max_len: int):
     prj_data['rim']['processed_h5'] = rim_h5
     prj_data['rim']['structure_path'] = rim_structure
 
-    std_behaviors = {}
-    reversals = {}
+    std_behaviors = []
+    reversals = []
+    datasets = []
 
     for prj, data in prj_data.items():
 
         label_data = h5_to_dict(data['labels_path'])
         structure_data = h5_to_dict(data['structure_path'])
 
+        # Find datasets of certain types. Currently only kfc and rim are considered
         ds_of_interest = [
-                ds for ds, value in structure_data.items()
-                if len(set(["neuropal"]
-                if prj=='kfc' else ['wt']).intersection(set(value["Tags"]))) > 0]
+            ds for ds, value in structure_data.items() if
+            len(set(["neuropal"] if prj == "kfc" else ["wt"]).intersection(set(value["Tags"]))) > 0
+        ]
 
         print(f'Total NeuroPAL datasets: {len(ds_of_interest)}')
 
         for ds in ds_of_interest:
             file_path = f"{data['processed_h5']}/{ds}-data.h5"
             loaded_data = h5_to_dict(file_path)
-            timing = loaded_data["timing"]
-
             behaviors = loaded_data['behavior']
-            reversals[ds] = behaviors['reversal_events'].T
-            flip_factor = -1 if structure_data[ds]['Flipped'] else 1
 
             if (len(behaviors['velocity']) >= max_len and
-                len(behaviors['head_angle']) >= max_len and
-                len(behaviors['pumping']) >= max_len):
+                len(behaviors['head_angle']) >= max_len):
+                # len(behaviors['pumping']) >= max_len):
 
-                std_behaviors[ds] = np.array([
-                            behaviors["velocity"][:max_len],
-                            behaviors["head_angle"][:max_len] * flip_factor,
-                            behaviors["pumping"][:max_len]]).T
+                flip_factor = -1 if structure_data[ds]['Flipped'] else 1
+                std_behaviors.append(np.array([
+                                behaviors["velocity"][:max_len],
+                                # behaviors["pumping"][:max_len],
+                                behaviors["head_angle"][:max_len] * flip_factor]).T)
+                datasets.append(ds)
+                reversals.append(behaviors['reversal_events'].T)
 
-    return std_behaviors, reversals
+    std_behaviors = np.array(std_behaviors)
+
+    return std_behaviors, reversals, datasets
 
 
 def assemble(
@@ -525,9 +528,11 @@ if __name__ == "__main__":
     # print(f'GCaMP traces: {gcamp_traces}')
 
     ### Load behaviors from all rim and kfc datasets ### 
-    # std_behaviors, reversals = load_behaviors_from_all_neuropal(max_len)
-    # print(len(std_behaviors.keys()))
-    # print([(ds, std_beh.shape) for ds, std_beh in std_behaviors.items()])
+    max_len = 1600
+    std_behaviors, reversals, datasets = load_behaviors(max_len)
+    print(f'std behaviors: {std_behaviors.shape}')
+    print(f'reversals: {len(reversals)}')
+    print(f'datasets: {len(datasets)}')
 
     ### Load datasets that contain a single neuron class ###
     # neuron_class = 'SMDV'
@@ -540,10 +545,10 @@ if __name__ == "__main__":
     # print(f'num unique datasets: {len(np.unique(datasets))}')
 
     ### Assemble datasets which include missing neurons
-    neuron_classes = ['AVA', 'MC', 'SMDV']
-    max_len = 1600
-    assembled_gcamp_traces, assembled_behaviors, assembled_datasets = \
-        assemble_data_with_missing_neurons(neuron_classes, max_len)
-    print(f'assembled neural traces: {assembled_gcamp_traces.shape}')
-    print(f'assembled behaviors: {assembled_behaviors.shape}')
-    print(f'assembled_datasets: {assembled_datasets}')
+    # neuron_classes = ['AVA', 'MC', 'SMDV']
+    # max_len = 1600
+    # assembled_gcamp_traces, assembled_behaviors, assembled_datasets = \
+    #     assemble_data_with_missing_neurons(neuron_classes, max_len)
+    # print(f'assembled neural traces: {assembled_gcamp_traces.shape}')
+    # print(f'assembled behaviors: {assembled_behaviors.shape}')
+    # print(f'assembled_datasets: {assembled_datasets}')
