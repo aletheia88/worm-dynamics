@@ -1,8 +1,39 @@
+from copy import deepcopy
 from typing import List
 import glob
 import h5py
 import json
 import numpy as np
+
+
+def shuffle(ds_name, num_neurons, random_seed, shuffle_type='behavior'):
+
+    """ Shuffle behaviors of the existing datasets by mismatching across animals. """
+
+    base = '/home/alicia/notebook/alicia/worm-dynamics/data'
+    data = np.load(f'{base}/{ds_name}.npy')
+    datasets = np.load(f'{base}/{ds_name}_ds.npy')
+    np.random.seed(random_seed)
+
+    num_datasets = len(datasets)
+    num_inputs = data.shape[1]
+
+    shuffle_indices = np.random.choice(list(range(num_datasets)), num_datasets)
+    print(f'shuffle order: {shuffle_indices}')
+    shuffled_datasets = datasets[shuffle_indices]
+    shuffled_data = deepcopy(data)
+
+    if shuffle_type == 'behavior':
+        behavior_indices = list(range(num_neurons, num_inputs))
+        for i in behavior_indices:
+            shuffled_data[:, i, :] = data[shuffle_indices, i, :]
+
+    elif shuffle_type == 'neuron':
+        neuron_indices = list(range(num_neurons))
+        for i in neuron_indices:
+            shuffled_data[:, i, :] = data[shuffle_indices, i, :]
+
+    return shuffled_data, shuffled_datasets
 
 
 def load_behaviors(max_len: int):

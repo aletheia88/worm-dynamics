@@ -120,10 +120,10 @@ def train(
         batch_size=batch_size,
         shuffle=True)
 
-    validation_dataloader = torch.utils.data.DataLoader(
-        validation_dataset,
-        batch_size=batch_size,
-        shuffle=True)
+    # validation_dataloader = torch.utils.data.DataLoader(
+    #     validation_dataset,
+    #     batch_size=batch_size,
+    #     shuffle=True)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
@@ -264,8 +264,8 @@ if __name__ == "__main__":
     base = '/home/alicia/notebook/alicia/worm-dynamics'
 
     training_dataset = CElegansDatasetPlus(
-        f'{base}/data/{ds_name}_train.npy',
-        f'{base}/data/{ds_name}_train_ds.npy',
+        f'{base}/data/{ds_name}_train_shuffle.npy',
+        f'{base}/data/{ds_name}_train_ds_shuffle.npy',
         window_stride=window_stride,
         window_size=window_size,
         device=device,
@@ -285,12 +285,12 @@ if __name__ == "__main__":
     out_channels = in_channels
     unet_dim = 1
     num_iterations = 1_000_000
-    num_epochs = 1000
+    num_epochs = 100
     learning_rate = 1e-4
-    exp_name = 'exp_2024100501'
+    exp_name = 'exp_2024101000_control'
     log_directory = f'/home/alicia/store1/alicia/attention_predict/{exp_name}'
     log_ckpt_freq = 10
-    random_seed = 1912 # Alan Turing's birthday :)
+    random_seed = 1912 # Alan Turing's birth year :)
 
     num_neurons = 3
 

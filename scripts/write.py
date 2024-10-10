@@ -1,6 +1,6 @@
 from load import (
         assemble, load_behaviors, load_single_neuron_class,
-        assemble_data_with_missing_neurons)
+        assemble_data_with_missing_neurons, shuffle)
 from copy import deepcopy
 import numpy as np
 
@@ -46,6 +46,14 @@ def split_train_valid_test(
         print(f'Train/Valid/Test splits for {ds_name} saved!')
     else:
         return train_set, valid_set, test_set
+
+
+def write_shuffled_data(ds_name, num_neurons, random_seed):
+
+    shuffled_data, shuffled_datasets = shuffle(ds_name, num_neurons, random_seed)
+    np.save(f'../data/{ds_name}_shuffle.npy', shuffled_data)
+    np.save(f'../data/{ds_name}_ds_shuffle.npy', shuffled_datasets)
+    print(f'Shuffled {ds_name} saved!')
 
 
 def write_behaviors(max_len, ds_name):
@@ -241,14 +249,14 @@ if __name__ == "__main__":
     # write_to_npy(neuron_classes, max_len, max_animals)
 
     ### Write all behavioral data to npy file
-    max_len = 1600
-    ds_name = 'velocity_headangle'
-    write_behaviors(max_len, ds_name)
+    # max_len = 1600
+    # ds_name = 'velocity_headangle'
+    # write_behaviors(max_len, ds_name)
 
     ### Split into training, validation, and testing datasets
-    ds_name = 'velocity_headangle'
-    random_seed = 1912 # Alan Turing's random seed
-    split_train_valid_test(ds_name, random_seed=random_seed)
+    # ds_name = 'velocity_headangle'
+    # random_seed = 1912 # Alan Turing's random seed
+    # split_train_valid_test(ds_name, random_seed=random_seed)
 
     ### Assemble neural and behavioral trace of 1 neuron class and write to npy
     # neuron_class = 'MC'
@@ -265,3 +273,10 @@ if __name__ == "__main__":
     # max_len = 1600
     # file_name = 'AVA_MC_SMDV'
     # write_data_with_missing_neurons(neuron_classes, max_len, file_name)
+
+    ### Create and write shuffled data
+    ds_name = 'AVA_MC_SMDV_train'
+    random_seed = 1913
+    num_neurons = 3
+    write_shuffled_data(ds_name, num_neurons, random_seed)
+
