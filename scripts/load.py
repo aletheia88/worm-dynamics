@@ -19,7 +19,6 @@ def shuffle(ds_name, num_neurons, random_seed, shuffle_type='behavior'):
     num_inputs = data.shape[1]
 
     shuffle_indices = np.random.choice(list(range(num_datasets)), num_datasets)
-    print(f'shuffle order: {shuffle_indices}')
     shuffled_datasets = datasets[shuffle_indices]
     shuffled_data = deepcopy(data)
 
@@ -31,6 +30,13 @@ def shuffle(ds_name, num_neurons, random_seed, shuffle_type='behavior'):
     elif shuffle_type == 'neuron':
         neuron_indices = list(range(num_neurons))
         for i in neuron_indices:
+            shuffled_data[:, i, :] = data[shuffle_indices, i, :]
+
+    elif shuffle_type == 'all':
+        all_indices = list(range(num_inputs))
+        shuffled_datasets = []
+        for i in all_indices:
+            shuffle_indices = np.random.choice(all_indices, num_inputs)
             shuffled_data[:, i, :] = data[shuffle_indices, i, :]
 
     return shuffled_data, shuffled_datasets
