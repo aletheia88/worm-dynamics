@@ -33,11 +33,8 @@ def shuffle(ds_name, num_neurons, random_seed, shuffle_type='behavior'):
             shuffled_data[:, i, :] = data[shuffle_indices, i, :]
 
     elif shuffle_type == 'all':
-        all_indices = list(range(num_inputs))
-        shuffled_datasets = []
-        for i in all_indices:
-            shuffle_indices = np.random.choice(all_indices, num_inputs)
-            shuffled_data[:, i, :] = data[shuffle_indices, i, :]
+        for i in range(num_inputs):
+            np.random.shuffle(shuffled_data[:, i, :])
 
     return shuffled_data, shuffled_datasets
 

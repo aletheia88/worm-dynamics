@@ -36,28 +36,31 @@ def split_train_valid_test(
     test_datasets = datasets[test_indices]
 
     if save:
-        np.save(f'../data/{ds_name}_train.npy', train_set)
-        np.save(f'../data/{ds_name}_valid.npy', valid_set)
-        np.save(f'../data/{ds_name}_test.npy', test_set)
+        np.save(f'{save_dir}/{ds_name}_train.npy', train_set)
+        np.save(f'{save_dir}/{ds_name}_valid.npy', valid_set)
+        np.save(f'{save_dir}/{ds_name}_test.npy', test_set)
         # Also save the corresponding dataset names
-        np.save(f'../data/{ds_name}_train_ds.npy', train_datasets)
-        np.save(f'../data/{ds_name}_valid_ds.npy', valid_datasets)
-        np.save(f'../data/{ds_name}_test_ds.npy', test_datasets)
+        np.save(f'{save_dir}/{ds_name}_train_ds.npy', train_datasets)
+        np.save(f'{save_dir}/{ds_name}_valid_ds.npy', valid_datasets)
+        np.save(f'{save_dir}/{ds_name}_test_ds.npy', test_datasets)
         print(f'Train/Valid/Test splits for {ds_name} saved!')
     else:
         return train_set, valid_set, test_set
 
 
-def write_shuffled_data(ds_name, num_neurons, random_seed):
+def write_shuffled_data(ds_name, num_neurons, random_seed, shuffle_type):
 
-    shuffled_data, shuffled_datasets = shuffle(ds_name, num_neurons, random_seed)
-    np.save(f'../data/{ds_name}_shuffle.npy', shuffled_data)
-    np.save(f'../data/{ds_name}_ds_shuffle.npy', shuffled_datasets)
+    save_dir = '/home/alicia/store1/alicia/attention_predict/data'
+    shuffled_data, shuffled_datasets = shuffle(ds_name, num_neurons, random_seed,
+                                               shuffle_type=shuffle_type)
+    np.save(f'{save_dir}/{ds_name}_shuffle.npy', shuffled_data)
+    np.save(f'{save_dir}/{ds_name}_ds_shuffle.npy', shuffled_datasets)
     print(f'Shuffled {ds_name} saved!')
 
 
 def write_behaviors(max_len, ds_name):
 
+    save_dir = '/home/alicia/store1/alicia/attention_predict/data'
     std_behaviors, _, datasets = load_behaviors(max_len)
     # Normalize velocity
     std_behaviors[:, :, 0] = 10 * std_behaviors[:, :, 0]
