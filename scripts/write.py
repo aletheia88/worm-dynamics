@@ -291,8 +291,20 @@ if __name__ == "__main__":
     # write_data_with_missing_neurons(neuron_classes, max_len, file_name)
 
     ### Create and write shuffled data
-    ds_name = 'AVA_MC_SMDV_train'
-    random_seed = 1913
-    num_neurons = 3
-    write_shuffled_data(ds_name, num_neurons, random_seed)
+    # ds_name = 'AVA_MC_SMDV_train'
+    # random_seed = 1913
+    # num_neurons = 3
+    # shuffle_type = 'all'
+    # write_shuffled_data(ds_name, num_neurons, random_seed, shuffle_type)
+
+    ### Create and write 4-column data: interneuron + std behaviors
+    interneurons = ['RID', 'AUA', 'AVJ', 'AVE', 'AIB', 'RIV', 'AVD', 'RIA', 'AIN',
+                    'AIZ', 'URB']
+    # max_len = 1600
+    # for neuron_class in interneurons:
+    #     file_name = f'{neuron_class}_stdbeh'
+    #     write_specific_pairings(neuron_class, max_len, file_name)
+    for neuron_class in interneurons:
+        file_name = f'{neuron_class}_stdbeh'
+        split_train_valid_test(file_name, random_seed=1912)
 
