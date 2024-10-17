@@ -13,7 +13,7 @@ def shuffle(ds_name, num_neurons, random_seed, shuffle_type='behavior'):
     base = '/home/alicia/notebook/alicia/worm-dynamics/data'
     data = np.load(f'{base}/{ds_name}.npy')
     datasets = np.load(f'{base}/{ds_name}_ds.npy')
-    np.random.seed(random_seed)
+    # np.random.seed(random_seed)
 
     num_datasets = len(datasets)
     num_inputs = data.shape[1]
@@ -480,7 +480,6 @@ def assemble_data_with_missing_neurons(neuron_classes, max_len):
         all_data[neuron_class]['gcamp_traces'] = gcamp_traces
         all_data[neuron_class]['std_behaviors'] = std_behaviors
         all_data[neuron_class]['datasets'] = datasets
-        print(f'{neuron_class} ds: {datasets}')
 
     max_datasets = max([len(all_data[neuron_class]['datasets'])
                         for neuron_class in neuron_classes])

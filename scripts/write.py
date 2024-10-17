@@ -11,8 +11,10 @@ def split_train_valid_test(
         random_seed=42,
         save=True
 ):
-    data = np.load(f'../data/{ds_name}.npy')
-    datasets = np.load(f'../data/{ds_name}_datasets.npy')
+    save_dir = '/home/alicia/store1/alicia/attention_predict/data'
+
+    data = np.load(f'{save_dir}/{ds_name}.npy')
+    datasets = np.load(f'{save_dir}/{ds_name}_datasets.npy')
     num_datasets = data.shape[0]
 
     train_size = int(num_datasets * split_ratio[0])
@@ -72,8 +74,8 @@ def write_behaviors(max_len, ds_name):
 
     # Normalize pumping
     # std_behaviors[:, :, 2] = std_behaviors[ds][:, 2] / 2 - 1
-    np.save(f'../data/{ds_name}.npy', std_behaviors.transpose(0, 2, 1))
-    np.save(f'../data/{ds_name}_datasets.npy', datasets)
+    np.save(f'{save_dir}/{ds_name}.npy', std_behaviors.transpose(0, 2, 1))
+    np.save(f'{save_dir}/{ds_name}_datasets.npy', datasets)
     print(f'{ds_name} saved!')
 
 
@@ -82,6 +84,7 @@ def write_data_with_missing_neurons(neuron_classes, max_len, file_name):
     # GCaMP traces shape: (n, 1600, m)
     # behavior traces shape: (n, 1600, k)
     # Note: traces are already normalized during assembling
+    save_dir = '/home/alicia/store1/alicia/attention_predict/data'
     assembled_gcamp_traces, assembled_behaviors, assembled_datasets = \
             assemble_data_with_missing_neurons(neuron_classes, max_len)
 
@@ -89,8 +92,8 @@ def write_data_with_missing_neurons(neuron_classes, max_len, file_name):
             (assembled_gcamp_traces, assembled_behaviors),
             axis=2).transpose(0, 2, 1)
 
-    np.save(f'../data/{file_name}.npy', assembled_traces)
-    np.save(f'../data/{file_name}_datasets.npy', np.array(assembled_datasets))
+    np.save(f'{save_dir}/{file_name}.npy', assembled_traces)
+    np.save(f'{save_dir}/{file_name}_datasets.npy', np.array(assembled_datasets))
     print(f'{file_name} written under data folder.')
 
 
@@ -99,26 +102,36 @@ def write_specific_pairings(neuron_class, max_len, file_name):
     # Let n be the number of worms and k the number of behaviors
     # GCaMP traces shape: (n, 1600)
     # behavior traces shape: (n, 1600, k)
-    gcamp_traces, std_behaviors, _ = load_single_neuron_class(
+    save_dir = '/home/alicia/store1/alicia/attention_predict/data'
+    gcamp_traces, std_behaviors, _, datasets = load_single_neuron_class(
             neuron_class,
             max_len=max_len)
-    # normalize traces
-    # in this case, k = 1 since we only include the feeding behavior, i.e., pumping
-    std_behaviors[:, :, 0] = std_behaviors[:, :, 0] / 2 - 1
+    # Normalize GCaMP
     f_mean = np.mean(gcamp_traces)
     gcamp_traces = gcamp_traces / (2 * f_mean) - 1
+
+    # Assuming velocity corresponds to column 0
+    std_behaviors[:, :, 0] = 10 * std_behaviors[:, :, 0]
+    # Assuming pumping corresponds to column 1
+    std_behaviors[:, :, 1] = std_behaviors[:, :, 1] / 2 - 1
+    # Assuming head curvature corresponds to column 2
+    head_angle = std_behaviors[:, :, 2]
+    min_val = np.min(head_angle)
+    max_val = np.max(head_angle)
+    std_behaviors[:, :, 2] = 2 * ((head_angle - min_val) / (max_val - min_val)) - 1
 
     assembled_traces = np.concatenate(
             (gcamp_traces[:, np.newaxis, :],
             std_behaviors.transpose(0, 2, 1)),
-            axis=1
-    )
-    np.save(f'../data/{file_name}.npy', assembled_traces)
+            axis=1)
+    np.save(f'{save_dir}/{file_name}.npy', assembled_traces)
+    np.save(f'{save_dir}/{file_name}_datasets.npy', datasets)
     print(f'{file_name} written under data folder!')
 
 
 def write_to_npy(neuron_classes, max_len, max_animals):
 
+    save_dir = '/home/alicia/store1/alicia/attention_predict/data'
     raw_neuron_traces, raw_behavior_traces = select_traces(
             neuron_classes,
             max_len,
@@ -147,7 +160,7 @@ def write_to_npy(neuron_classes, max_len, max_animals):
 
     # write under '../data/'
     file_name = '_'.join(neuron_classes)
-    np.save(f'../data/{file_name}', assembled_traces)
+    np.save(f'{save_dir}/{file_name}', assembled_traces)
 
     print(f'{file_name} written under data folder!')
 
