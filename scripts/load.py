@@ -489,27 +489,39 @@ def assemble_data_with_missing_neurons(neuron_classes, max_len):
             max_neuron_class = neuron_class
             break
 
+    print(f'{max_neuron_class} is found with the maximum number of datasets.')
     # assemble neural and behavior traces following the ordering of datasets from which
     # the most abundant neuron class is found
     assembled_datasets = all_data[max_neuron_class]['datasets']
     assembled_gcamp_traces = np.zeros((max_datasets, max_len, len(neuron_classes)))
     assembled_behaviors = all_data[max_neuron_class]['std_behaviors']
+    # `dataset_neuron_info` dictionary is organized as follows:
+    # {'ds1': ['neuronA', 'neuronB', 'neuronC'],
+    #  'ds2': ['neuronA'], ...}
+    dataset_neuron_info = {ds: [max_neuron_class] for ds in assembled_datasets}
 
     for dataset_index, dataset in enumerate(assembled_datasets):
 
         for neuron_index, neuron_class in enumerate(neuron_classes):
 
+            neuron_class_datasets = all_data[neuron_class]['datasets']
             if neuron_class != max_neuron_class:
 
-                if dataset in all_data[neuron_class]['datasets']:
+                if dataset in neuron_class_datasets:
                     gcamp_index = all_data[neuron_class]['datasets'].index(dataset)
                     assembled_gcamp_traces[dataset_index, :, neuron_index] = \
                         all_data[neuron_class]['gcamp_traces'][gcamp_index, :]
+
+                    if neuron_class not in dataset_neuron_info[dataset]:
+                        dataset_neuron_info[dataset].append(neuron_class)
             else:
                 assembled_gcamp_traces[dataset_index, :, neuron_index] = \
                         all_data[max_neuron_class]['gcamp_traces'][dataset_index, :]
 
-    return assembled_gcamp_traces, assembled_behaviors, assembled_datasets
+    return (assembled_gcamp_traces,
+            assembled_behaviors,
+            assembled_datasets,
+            dataset_neuron_info)
 
 
 def h5_to_dict(file_path: str) -> dict:
@@ -561,14 +573,14 @@ if __name__ == "__main__":
     # print(f'GCaMP traces: {gcamp_traces}')
 
     ### Load behaviors from all rim and kfc datasets ### 
-    max_len = 1600
-    std_behaviors, reversals, datasets = load_behaviors(max_len)
-    print(f'std behaviors: {std_behaviors.shape}')
-    print(f'reversals: {len(reversals)}')
-    print(f'datasets: {len(datasets)}')
+    # max_len = 1600
+    # std_behaviors, reversals, datasets = load_behaviors(max_len)
+    # print(f'std behaviors: {std_behaviors.shape}')
+    # print(f'reversals: {len(reversals)}')
+    # print(f'datasets: {len(datasets)}')
 
     ### Load datasets that contain a single neuron class ###
-    # neuron_class = 'SMDV'
+    # neuron_class = 'RMG'
     # gcamp_traces, std_behaviors, reversals, datasets = load_single_neuron_class(
     #         neuron_class,
     #         verbose=True)
@@ -578,10 +590,20 @@ if __name__ == "__main__":
     # print(f'num unique datasets: {len(np.unique(datasets))}')
 
     ### Assemble datasets which include missing neurons
-    # neuron_classes = ['AVA', 'MC', 'SMDV']
-    # max_len = 1600
-    # assembled_gcamp_traces, assembled_behaviors, assembled_datasets = \
-    #     assemble_data_with_missing_neurons(neuron_classes, max_len)
+    neuron_classes = ['RID', 'AVE', 'RIV', 'AVD', 'AIN']
+    max_len = 1600
+    outputs = assemble_data_with_missing_neurons(neuron_classes, max_len)
+    assembled_gcamp_traces, assembled_behaviors, assembled_datasets, dataset_neuron_info = outputs
     # print(f'assembled neural traces: {assembled_gcamp_traces.shape}')
     # print(f'assembled behaviors: {assembled_behaviors.shape}')
     # print(f'assembled_datasets: {assembled_datasets}')
+    # print(f'datasets found in each neuron class: {dataset_neuron_info}')
+    counts = {neuron_class: 0 for neuron_class in neuron_classes}
+
+    for dataset, neuron_list in dataset_neuron_info.items():
+
+        for neuron_class in neuron_list:
+            counts[neuron_class] += 1
+    print(f'neuron dataset counts: {counts}')
+    print(f'maximum unique datasets: {len(np.unique(assembled_datasets))}')
+
