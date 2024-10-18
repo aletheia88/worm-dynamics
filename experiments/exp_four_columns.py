@@ -76,7 +76,7 @@ def train(
             )
 
 
-def sample_mask_indices(num_inputs):
+def get_mask_indices(num_inputs):
 
     """ Sample mask indices such that with 50% chance exactly one random column is
     masked out and with another 50% chance two random columns are masked out. """
