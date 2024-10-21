@@ -13,8 +13,8 @@ def split_train_valid_test(
 ):
     data_dir = '/home/alicia/store1/alicia/attention_predict/data'
 
-    data = np.load(f'{save_dir}/{ds_name}.npy')
-    datasets = np.load(f'{save_dir}/{ds_name}_datasets.npy')
+    data = np.load(f'{data_dir}/{ds_name}.npy')
+    datasets = np.load(f'{data_dir}/{ds_name}_datasets.npy')
     num_datasets = data.shape[0]
 
     train_size = int(num_datasets * split_ratio[0])
@@ -314,8 +314,8 @@ if __name__ == "__main__":
     # write_behaviors(max_len, ds_name)
 
     ### Split into training, validation, and testing datasets
-    # ds_name = 'velocity_headangle'
-    # random_seed = 1912 # Alan Turing's random seed
+    # ds_name = 'RID_AVE_RIV_AVD_AIN'
+    # random_seed = 1912
     # split_train_valid_test(ds_name, random_seed=random_seed)
 
     ### Assemble neural and behavioral trace of 1 neuron class and write to npy
@@ -329,26 +329,30 @@ if __name__ == "__main__":
     # write_specific_pairings(neuron_class, max_len, file_name)
 
     ### Assemble data with missing neurons
-    # neuron_classes = ['AVA', 'MC', 'SMDV']
+    # neuron_classes = ['RID', 'AVE', 'RIV', 'AVD', 'AIN']
     # max_len = 1600
-    # file_name = 'AVA_MC_SMDV'
+    # file_name = 'RID_AVE_RIV_AVD_AIN'
     # write_data_with_missing_neurons(neuron_classes, max_len, file_name)
 
     ### Create and write shuffled data
-    # ds_name = 'AVA_MC_SMDV_train'
-    # random_seed = 1913
+    # ds_name = 'RID_AVE_RIV_AVD_AIN_train'
+    # random_seed = 1912
     # num_neurons = 3
     # shuffle_type = 'all'
     # write_shuffled_data(ds_name, num_neurons, random_seed, shuffle_type)
 
     ### Create and write 4-column data: interneuron + std behaviors
-    interneurons = ['RID', 'AUA', 'AVJ', 'AVE', 'AIB', 'RIV', 'AVD', 'RIA', 'AIN',
-                    'AIZ', 'URB']
+    # interneurons = ['RID', 'AUA', 'AVJ', 'AVE', 'AIB', 'RIV', 'AVD', 'RIA', 'AIN',
+    #                 'AIZ', 'URB']
     # max_len = 1600
     # for neuron_class in interneurons:
     #     file_name = f'{neuron_class}_stdbeh'
     #     write_specific_pairings(neuron_class, max_len, file_name)
-    for neuron_class in interneurons:
-        file_name = f'{neuron_class}_stdbeh'
-        split_train_valid_test(file_name, random_seed=1912)
+    # for neuron_class in interneurons:
+    #     file_name = f'{neuron_class}_stdbeh'
+    #     split_train_valid_test(file_name, random_seed=1912)
+
+    ### Write evaluation datasets: union of validation and testing datasets
+    ds_name = 'RID_AVE_RIV_AVD_AIN'
+    write_eval_data(ds_name)
 
