@@ -10,7 +10,7 @@ def shuffle(ds_name, num_neurons, random_seed, shuffle_type='behavior'):
 
     """ Shuffle behaviors of the existing datasets by mismatching across animals. """
 
-    base = '/home/alicia/notebook/alicia/worm-dynamics/data'
+    base = '/store1/alicia/attention_predict/data'
     data = np.load(f'{base}/{ds_name}.npy')
     datasets = np.load(f'{base}/{ds_name}_ds.npy')
     # np.random.seed(random_seed)

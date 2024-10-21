@@ -11,7 +11,7 @@ def split_train_valid_test(
         random_seed=42,
         save=True
 ):
-    save_dir = '/home/alicia/store1/alicia/attention_predict/data'
+    data_dir = '/home/alicia/store1/alicia/attention_predict/data'
 
     data = np.load(f'{save_dir}/{ds_name}.npy')
     datasets = np.load(f'{save_dir}/{ds_name}_datasets.npy')
@@ -38,31 +38,69 @@ def split_train_valid_test(
     test_datasets = datasets[test_indices]
 
     if save:
-        np.save(f'{save_dir}/{ds_name}_train.npy', train_set)
-        np.save(f'{save_dir}/{ds_name}_valid.npy', valid_set)
-        np.save(f'{save_dir}/{ds_name}_test.npy', test_set)
+        np.save(f'{data_dir}/{ds_name}_train.npy', train_set)
+        np.save(f'{data_dir}/{ds_name}_valid.npy', valid_set)
+        np.save(f'{data_dir}/{ds_name}_test.npy', test_set)
         # Also save the corresponding dataset names
-        np.save(f'{save_dir}/{ds_name}_train_ds.npy', train_datasets)
-        np.save(f'{save_dir}/{ds_name}_valid_ds.npy', valid_datasets)
-        np.save(f'{save_dir}/{ds_name}_test_ds.npy', test_datasets)
+        np.save(f'{data_dir}/{ds_name}_train_ds.npy', train_datasets)
+        np.save(f'{data_dir}/{ds_name}_valid_ds.npy', valid_datasets)
+        np.save(f'{data_dir}/{ds_name}_test_ds.npy', test_datasets)
         print(f'Train/Valid/Test splits for {ds_name} saved!')
     else:
         return train_set, valid_set, test_set
 
 
+def write_eval_data(ds_name):
+
+    data_dir = '/home/alicia/store1/alicia/attention_predict/data'
+    # find unique datasets from validation and testing that not in training
+    # get for their indices in `valid_ds` and `test_ds`
+    # use these indices to get traces for each datasets
+    # lastly assemble all the datasets
+    train_ds = np.load(f'{data_dir}/{ds_name}_train_ds.npy')
+    valid_ds = np.load(f'{data_dir}/{ds_name}_valid_ds.npy')
+    test_ds = np.load(f'{data_dir}/{ds_name}_test_ds.npy')
+
+    valid_data = np.load(f'{data_dir}/{ds_name}_valid.npy')
+    test_data = np.load(f'{data_dir}/{ds_name}_test.npy')
+
+    unique_valid = list(set(valid_ds).difference(train_ds))
+    unique_test = list(set(test_ds).difference(train_ds))
+
+    eval_datasets = np.unique(unique_valid + unique_valid).tolist()
+    np.save(f'{data_dir}/{ds_name}_eval_ds.npy', eval_datasets)
+
+    # initialize eval data
+    _, num_inputs, num_frames = valid_data.shape
+    eval_data = np.zeros((len(eval_datasets), num_inputs, num_frames))
+
+    for i, eval_ds in enumerate(eval_datasets):
+        if eval_ds in unique_valid:
+            ds_index = valid_ds.tolist().index(eval_ds)
+            eval_data[i, :, :] = valid_data[ds_index, :, :]
+        elif eval_ds in unique_test:
+            ds_index = test_ds.tolist().index(eval_ds)
+            eval_data[i, :, :] = test_data[ds_index, :, :]
+        else:
+            print(f'WARNING: {eval_ds} is not found.')
+
+    np.save(f'{data_dir}/{ds_name}_eval.npy', eval_data)
+    print(f'Eval data/datasets for {ds_name} are saved!')
+
+
 def write_shuffled_data(ds_name, num_neurons, random_seed, shuffle_type):
 
-    save_dir = '/home/alicia/store1/alicia/attention_predict/data'
+    data_dir = '/home/alicia/store1/alicia/attention_predict/data'
     shuffled_data, shuffled_datasets = shuffle(ds_name, num_neurons, random_seed,
                                                shuffle_type=shuffle_type)
-    np.save(f'{save_dir}/{ds_name}_shuffle.npy', shuffled_data)
-    np.save(f'{save_dir}/{ds_name}_ds_shuffle.npy', shuffled_datasets)
+    np.save(f'{data_dir}/{ds_name}_shuffle.npy', shuffled_data)
+    np.save(f'{data_dir}/{ds_name}_ds_shuffle.npy', shuffled_datasets)
     print(f'Shuffled {ds_name} saved!')
 
 
 def write_behaviors(max_len, ds_name):
 
-    save_dir = '/home/alicia/store1/alicia/attention_predict/data'
+    data_dir = '/home/alicia/store1/alicia/attention_predict/data'
     std_behaviors, _, datasets = load_behaviors(max_len)
     # Normalize velocity
     std_behaviors[:, :, 0] = 10 * std_behaviors[:, :, 0]
@@ -74,8 +112,8 @@ def write_behaviors(max_len, ds_name):
 
     # Normalize pumping
     # std_behaviors[:, :, 2] = std_behaviors[ds][:, 2] / 2 - 1
-    np.save(f'{save_dir}/{ds_name}.npy', std_behaviors.transpose(0, 2, 1))
-    np.save(f'{save_dir}/{ds_name}_datasets.npy', datasets)
+    np.save(f'{data_dir}/{ds_name}.npy', std_behaviors.transpose(0, 2, 1))
+    np.save(f'{data_dir}/{ds_name}_datasets.npy', datasets)
     print(f'{ds_name} saved!')
 
 
@@ -84,16 +122,22 @@ def write_data_with_missing_neurons(neuron_classes, max_len, file_name):
     # GCaMP traces shape: (n, 1600, m)
     # behavior traces shape: (n, 1600, k)
     # Note: traces are already normalized during assembling
-    save_dir = '/home/alicia/store1/alicia/attention_predict/data'
-    assembled_gcamp_traces, assembled_behaviors, assembled_datasets = \
-            assemble_data_with_missing_neurons(neuron_classes, max_len)
+    data_dir = '/home/alicia/store1/alicia/attention_predict/data'
+    outputs = assemble_data_with_missing_neurons(neuron_classes, max_len)
+    # ouputs is a tuple of three arrays:
+    # 0: assembled_gcamp_traces
+    # 1: assembled_behaviors
+    # 2: assembled_datasets
+    # 3: dataset_neuron_info
+    assembled_gcamp_traces = outputs[0]
+    assembled_behaviors = outputs[1]
+    assembled_datasets = outputs[2]
 
     assembled_traces = np.concatenate(
-            (assembled_gcamp_traces, assembled_behaviors),
-            axis=2).transpose(0, 2, 1)
+            (assembled_gcamp_traces, assembled_behaviors), axis=2).transpose(0, 2, 1)
 
-    np.save(f'{save_dir}/{file_name}.npy', assembled_traces)
-    np.save(f'{save_dir}/{file_name}_datasets.npy', np.array(assembled_datasets))
+    np.save(f'{data_dir}/{file_name}.npy', assembled_traces)
+    np.save(f'{data_dir}/{file_name}_datasets.npy', np.array(assembled_datasets))
     print(f'{file_name} written under data folder.')
 
 
@@ -102,7 +146,7 @@ def write_specific_pairings(neuron_class, max_len, file_name):
     # Let n be the number of worms and k the number of behaviors
     # GCaMP traces shape: (n, 1600)
     # behavior traces shape: (n, 1600, k)
-    save_dir = '/home/alicia/store1/alicia/attention_predict/data'
+    data_dir = '/home/alicia/store1/alicia/attention_predict/data'
     gcamp_traces, std_behaviors, _, datasets = load_single_neuron_class(
             neuron_class,
             max_len=max_len)
@@ -124,14 +168,14 @@ def write_specific_pairings(neuron_class, max_len, file_name):
             (gcamp_traces[:, np.newaxis, :],
             std_behaviors.transpose(0, 2, 1)),
             axis=1)
-    np.save(f'{save_dir}/{file_name}.npy', assembled_traces)
-    np.save(f'{save_dir}/{file_name}_datasets.npy', datasets)
+    np.save(f'{data_dir}/{file_name}.npy', assembled_traces)
+    np.save(f'{data_dir}/{file_name}_datasets.npy', datasets)
     print(f'{file_name} written under data folder!')
 
 
 def write_to_npy(neuron_classes, max_len, max_animals):
 
-    save_dir = '/home/alicia/store1/alicia/attention_predict/data'
+    data_dir = '/home/alicia/store1/alicia/attention_predict/data'
     raw_neuron_traces, raw_behavior_traces = select_traces(
             neuron_classes,
             max_len,
@@ -160,7 +204,7 @@ def write_to_npy(neuron_classes, max_len, max_animals):
 
     # write under '../data/'
     file_name = '_'.join(neuron_classes)
-    np.save(f'{save_dir}/{file_name}', assembled_traces)
+    np.save(f'{data_dir}/{file_name}', assembled_traces)
 
     print(f'{file_name} written under data folder!')
 
