@@ -51,9 +51,9 @@ def train(
 
             targets = deepcopy(inputs)
 
-            recorded_neuron_indices = get_recorded_neuron_indices(targets, num_neurons)
+            recorded_neuron_index_dict = get_recorded_neuron_indices(targets, num_neurons)
             mask_index_dict = get_mask_indices(
-                    recorded_neuron_indices,
+                    recorded_neuron_index_dict,
                     neuron_indices,
                     behavior_indices)
 
@@ -63,7 +63,12 @@ def train(
             optimizer.zero_grad()
             outputs = model(inputs)
 
-            loss = aggregate_loss(targets, outputs, mask_index_dict, behavior_indices)
+            loss = aggregate_loss(
+                    targets,
+                    outputs,
+                    mask_index_dict,
+                    behavior_indices,
+                    recorded_neuron_index_dict)
             loss.backward()
             optimizer.step()
             loss_average += loss.item()
@@ -87,7 +92,7 @@ def train(
 
 
 def get_mask_indices(
-        recorded_neuron_indices,
+        recorded_neuron_index_dict,
         neuron_indices,
         behavior_indices,
         num_mask_indices=4):
@@ -98,10 +103,10 @@ def get_mask_indices(
     # each key indicates the sample index in a batch
     mask_index_dict = {}
 
-    for n in recorded_neuron_indices.keys():
+    for n in recorded_neuron_index_dict.keys():
         # automatically masking out the missing neurons
         missing_neuron_indices = list(set(neuron_indices) -
-                                   set(recorded_neuron_indices[n]))
+                                   set(recorded_neuron_index_dict[n]))
         # masking out additional neurons if needed
         remaining_neuron_indices = list(set(neuron_indices) - set(missing_neuron_indices))
         num_to_be_masked = num_mask_indices - len(missing_neuron_indices)
@@ -122,7 +127,8 @@ def get_mask_indices(
             # chance of masking two behaviors
             num_behavior_mask_indices = np.random.choice([1, 2])
             mask_index_dict[n] = np.random.choice(behavior_indices,
-                                                  num_behavior_mask_indices).tolist()
+                                                  num_behavior_mask_indices,
+                                                  replace=False).tolist()
         else:
             mask_index_dict[n] = [mask_choice]
 
@@ -134,18 +140,23 @@ def get_recorded_neuron_indices(targets, num_neurons):
     batch_size = targets.shape[0]
     # each key indicate a sample index in the batch
     # the values corresponding to the column indices where data is recorded
-    recorded_neuron_indices = {}
+    recorded_neuron_index_dict = {}
 
     for n in range(batch_size):
-        recorded_neuron_indices[n] = [
+        recorded_neuron_index_dict[n] = [
             i for i in range(num_neurons)
             if (torch.max(targets[n, i, :]).item() != 0
             and torch.min(targets[n, i, :]).item() != 0)
         ]
-    return recorded_neuron_indices
+    return recorded_neuron_index_dict
 
 
-def aggregate_loss(targets, outputs, mask_index_dict, behavior_indices):
+def aggregate_loss(
+        targets,
+        outputs,
+        mask_index_dict,
+        behavior_indices,
+        recorded_neuron_index_dict):
 
     """ Compute MSE loss for each sample on the reconstruction of one neuron and the
     standard behaviors. """
