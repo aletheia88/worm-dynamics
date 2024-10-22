@@ -154,8 +154,14 @@ def aggregate_loss(targets, outputs, mask_index_dict, behavior_indices):
     loss = 0
 
     for n in range(batch_size):
-        # data columns to reconstruct
-        loss_columns = np.unique(np.array(mask_index_dict[n] + behavior_indices))
+        mask_indices = mask_index_dict[n]
+        recorded_neuron_indices = recorded_neuron_index_dict[n]
+        # when the masked column is only the single remaining neuron
+        if len(mask_indices) == 1 and mask_indices[0] < num_neurons:
+            loss_columns = mask_indices + behavior_indices
+        # when the masked columns are behavior(s)
+        else:
+            loss_columns = recorded_neuron_indices + behavior_indices
         loss += mse(targets[n, loss_columns, :],
                     outputs[n, loss_columns, :])
 
