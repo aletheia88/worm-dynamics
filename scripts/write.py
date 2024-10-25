@@ -1,5 +1,5 @@
 from load import (
-        assemble, load_behaviors, load_single_neuron_class,
+        assemble_all, assemble, load_behaviors, load_single_neuron_class,
         assemble_data_with_missing_neurons, shuffle)
 from copy import deepcopy
 import numpy as np
@@ -86,6 +86,15 @@ def write_eval_data(ds_name):
 
     np.save(f'{data_dir}/{ds_name}_eval.npy', eval_data)
     print(f'Eval data/datasets for {ds_name} are saved!')
+
+
+def write_all_data(ds_name, neuron_classes, behavior_index_dict):
+
+    data_dir = '/home/alicia/store1/alicia/attention_predict/data'
+    assembled_data, datasets = assemble_all(neuron_classes, behavior_index_dict)
+    np.save(f'{data_dir}/{ds_name}.npy', assembled_data)
+    np.save(f'{data_dir}/{ds_name}_datasets.npy', datasets)
+    print(f'dataset {ds_name} saved!')
 
 
 def write_shuffled_data(ds_name, num_neurons, random_seed, shuffle_type):
@@ -353,6 +362,12 @@ if __name__ == "__main__":
     #     split_train_valid_test(file_name, random_seed=1912)
 
     ### Write evaluation datasets: union of validation and testing datasets
-    ds_name = 'RID_AVE_RIV_AVD_AIN'
-    write_eval_data(ds_name)
+    # ds_name = 'RID_AVE_RIV_AVD_AIN'
+    # write_eval_data(ds_name)
+
+    ### Write neuron-behavior data assembled from all recordings available
+    ds_name = 'RID_AVE_RIV_AVD_AIN_all'
+    neuron_classes = ['RID', 'AVE', 'RIV', 'AVD', 'AIN']
+    behavior_index_dict = {'velocity': 5, 'pumping': 6, 'head_angle': 7}
+    write_all_data(ds_name, neuron_classes, behavior_index_dict)
 
