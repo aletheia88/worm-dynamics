@@ -1,9 +1,48 @@
 from copy import deepcopy
+from flv_utils import by_class, by_multiclass
 from typing import List
 import glob
 import h5py
 import json
 import numpy as np
+
+
+def assemble_all(neuron_classes, behavior_index_dict, max_len=1600):
+
+    datasets = []
+    all_outputs = {neuron_class: {} for neuron_class in neuron_classes}
+    for neuron_class in neuron_classes:
+        all_outputs[neuron_class] = by_class(neuron_class)
+        datasets += all_outputs[neuron_class]['datasets']
+
+    # get unique datasets
+    unique_datasets = np.unique(datasets).tolist()
+    num_behaviors = len(behavior_index_dict)
+    assembled_data = np.zeros((
+        len(unique_datasets),
+        len(neuron_classes) + num_behaviors,
+        max_len))
+
+    for i, ds in enumerate(unique_datasets):
+
+        for j, neuron_class in enumerate(neuron_classes):
+
+            output = all_outputs[neuron_class]
+
+            if ds in output['datasets']:
+                ds_index = output['datasets'].index(ds)
+                assembled_data[i, j, :] = output['neuron_traces'][ds_index]
+
+                behaviors = output['behavior_traces']
+                velocity_index = behavior_index_dict['velocity']
+                pumping_index = behavior_index_dict['pumping']
+                angle_index = behavior_index_dict['head_angle']
+
+                assembled_data[i, velocity_index, :] = behaviors['velocity'][ds_index]
+                assembled_data[i, pumping_index, :] = behaviors['pumping'][ds_index]
+                assembled_data[i, angle_index, :] = behaviors['head_angle'][ds_index]
+
+    return assembled_data, unique_datasets
 
 
 def shuffle(ds_name, num_neurons, random_seed, shuffle_type='behavior'):
@@ -590,20 +629,27 @@ if __name__ == "__main__":
     # print(f'num unique datasets: {len(np.unique(datasets))}')
 
     ### Assemble datasets which include missing neurons
-    neuron_classes = ['RID', 'AVE', 'RIV', 'AVD', 'AIN']
-    max_len = 1600
-    outputs = assemble_data_with_missing_neurons(neuron_classes, max_len)
-    assembled_gcamp_traces, assembled_behaviors, assembled_datasets, dataset_neuron_info = outputs
+    # neuron_classes = ['RID', 'AVE', 'RIV', 'AVD', 'AIN']
+    # max_len = 1600
+    # outputs = assemble_data_with_missing_neurons(neuron_classes, max_len)
+    # assembled_gcamp_traces, assembled_behaviors, assembled_datasets, dataset_neuron_info = outputs
     # print(f'assembled neural traces: {assembled_gcamp_traces.shape}')
     # print(f'assembled behaviors: {assembled_behaviors.shape}')
     # print(f'assembled_datasets: {assembled_datasets}')
     # print(f'datasets found in each neuron class: {dataset_neuron_info}')
-    counts = {neuron_class: 0 for neuron_class in neuron_classes}
+    # counts = {neuron_class: 0 for neuron_class in neuron_classes}
 
-    for dataset, neuron_list in dataset_neuron_info.items():
+    # for dataset, neuron_list in dataset_neuron_info.items():
 
-        for neuron_class in neuron_list:
-            counts[neuron_class] += 1
-    print(f'neuron dataset counts: {counts}')
-    print(f'maximum unique datasets: {len(np.unique(assembled_datasets))}')
+    #     for neuron_class in neuron_list:
+    #         counts[neuron_class] += 1
+    # print(f'neuron dataset counts: {counts}')
+    # print(f'maximum unique datasets: {len(np.unique(assembled_datasets))}')
 
+    ### Assemble traces for multiple neuron classes from all datasets
+    neuron_classes = ['RID', 'AVE', 'RIV', 'AVD', 'AIN']
+    behavior_index_dict = {'velocity': 5, 'pumping': 6, 'head_angle': 7}
+    assembled_data, datasets = assemble_all(neuron_classes, behavior_index_dict)
+    print(f'num datasets: {len(datasets)}')
+    print(f'all datasets: {datasets}')
+    print(f'assembled data: {assembled_data}')
