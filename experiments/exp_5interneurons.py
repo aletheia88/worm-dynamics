@@ -52,7 +52,21 @@ def train(
             targets = deepcopy(inputs)
 
             recorded_neuron_index_dict = get_recorded_neuron_indices(targets, num_neurons)
-            mask_index_dict = get_mask_indices(
+            ### Masking scheme v0 ###
+            # masking 4 random neurons → these neurons are excluded from contributing to
+            # the loss function
+            # → neuron | velocity | pumping | head angle
+            # (after step 1) 50% chance of masking the neuron
+            # 50% chance of masking behavior (50% chance of masking either 1 or 2
+            # behaviors)
+
+            # mask_index_dict = get_mask_indices(
+            #         recorded_neuron_index_dict,
+            #         neuron_indices,
+            #         behavior_indices)
+
+            ### Masking scheme v1: random masking w/o constraint ###
+            mask_index_dict = get_mask_indices_v1(
                     recorded_neuron_index_dict,
                     neuron_indices,
                     behavior_indices)
@@ -63,12 +77,21 @@ def train(
             optimizer.zero_grad()
             outputs = model(inputs)
 
-            loss = aggregate_loss(
+            ### Loss v0 for Masking scheme v0 ###
+            # loss = aggregate_loss(
+            #         targets,
+            #         outputs,
+            #         mask_index_dict,
+            #         behavior_indices,
+            #         recorded_neuron_index_dict)
+
+            ### Loss v1 for Masking scheme v1 ###
+            loss = aggregate_loss_v1(
                     targets,
                     outputs,
-                    mask_index_dict,
                     behavior_indices,
                     recorded_neuron_index_dict)
+
             loss.backward()
             optimizer.step()
             loss_average += loss.item()
@@ -95,7 +118,7 @@ def get_mask_indices(
         recorded_neuron_index_dict,
         neuron_indices,
         behavior_indices,
-        num_mask_indices=4):
+        total_masks=4):
 
     """ Mask out 4 columns from a total of five. Missing neurons are automatically
     masked. """
@@ -105,14 +128,14 @@ def get_mask_indices(
 
     for n in recorded_neuron_index_dict.keys():
         # automatically masking out the missing neurons
+        recorded_neuron_indices = recorded_neuron_index_dict[n]
         missing_neuron_indices = list(set(neuron_indices) -
-                                   set(recorded_neuron_index_dict[n]))
+                                      set(recorded_neuron_indices))
         # masking out additional neurons if needed
-        remaining_neuron_indices = list(set(neuron_indices) - set(missing_neuron_indices))
-        num_to_be_masked = num_mask_indices - len(missing_neuron_indices)
+        num_to_be_masked = total_masks - len(missing_neuron_indices)
         if num_to_be_masked > 0:
             mask_neuron_indices = missing_neuron_indices + np.random.choice(
-                    remaining_neuron_indices,
+                    recorded_neuron_indices,
                     num_to_be_masked,
                     replace=False).tolist()
         else:
@@ -131,6 +154,35 @@ def get_mask_indices(
                                                   replace=False).tolist()
         else:
             mask_index_dict[n] = [mask_choice]
+
+    return mask_index_dict
+
+
+def get_mask_indices_v1(
+        recorded_neuron_index_dict,
+        neuron_indices,
+        behavior_indices,
+        num_mask_choices=[4, 5]):
+
+    """ Mask out 4 or 5 columns at random. No restriction on the respective number of
+    neural or behavioral columns. Unrecorded neurons are automatically masked out. """
+
+    mask_index_dict = {}
+
+    for n in recorded_neuron_index_dict.keys():
+
+        total_masks = np.random.choice(num_mask_choices)
+        recorded_neuron_indices = recorded_neuron_index_dict[n]
+        missing_neuron_indices = list(set(neuron_indices) -
+                                      set(recorded_neuron_indices))
+        num_to_be_masked = total_masks - len(missing_neuron_indices)
+        if num_to_be_masked >= 1:
+            mask_index_dict[n] = missing_neuron_indices + np.random.choice(
+                    recorded_neuron_indices + behavior_indices,
+                    num_to_be_masked,
+                    replace=False).tolist()
+        else:
+            mask_index_dict[n] = missing_neuron_indices
 
     return mask_index_dict
 
@@ -179,6 +231,25 @@ def aggregate_loss(
     return loss
 
 
+def aggregate_loss_v1(
+        targets,
+        outputs,
+        behavior_indices,
+        recorded_neuron_index_dict):
+
+    """ Compute MSE loss for each sample on the reconstruction of all recorded
+    neurons and all behaviors. """
+    batch_size = targets.shape[0]
+    mse = torch.nn.MSELoss()
+    loss = 0
+
+    for n in range(batch_size):
+        loss_columns = recorded_neuron_index_dict[n] + behavior_indices
+        loss += mse(targets[n, loss_columns, :], outputs[n, loss_columns, :])
+
+    return loss
+
+
 def ensure_dir_exists(directories):
     import os
     for directory in directories:
@@ -218,7 +289,7 @@ if __name__ == "__main__":
     num_iterations = 1_000_000
     num_epochs = 201
     learning_rate = 1e-4
-    exp_name = f'exp_2024102100_control'
+    exp_name = f'exp_2024102201_control'
     log_directory = f'/home/alicia/store1/alicia/attention_predict/{exp_name}'
     log_ckpt_freq = 10
     random_seed = None
