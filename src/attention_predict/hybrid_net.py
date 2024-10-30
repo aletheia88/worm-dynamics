@@ -13,6 +13,7 @@ class HybridNet(torch.nn.Module):
         kernel_size: int = 3,
         padding: str = 'same',
         downsample_factor: int = 2,
+        hidden_dims: int = 512,
         upsample_mode: str = 'nearest',
         final_activation: torch.nn.Module | None = None,
         device: str = 'cpu',
@@ -27,9 +28,15 @@ class HybridNet(torch.nn.Module):
         self.kernel_size = kernel_size
         self.padding = padding
         self.downsample_factor = downsample_factor
+        self.hidden_dims = hidden_dims
         self.upsample_mode = upsample_mode
         self.final_activation = final_activation
         self.device = device
+
+        self.downsample = Downsample(self.downsample_factor)
+        self.upsample = torch.nn.Upsample(
+            scale_factor=self.downsample_factor,
+            mode=self.upsample_mode)
 
         self.encoder_block = torch.nn.ModuleList()
         self.decoder_block = torch.nn.ModuleList()
@@ -39,52 +46,52 @@ class HybridNet(torch.nn.Module):
             fmaps_in, fmaps_out = self.compute_fmaps_encoder(level)
             if level == 0:
                 fmaps_in = 1
-            print(f'left conv: in: {fmaps_in} -> out: {fmaps_out}')
             self.encoder_block.append(
                 ConvBlock(
                     fmaps_in,
                     fmaps_out,
                     self.kernel_size,
                     self.padding
-                )
+                ).to(self.device)
             )
 
         self.one_hots = torch.eye(self.num_inputs, device=self.device)
-        self.latent_xdim = self.window_size // (2**(self.depth - 1)) # 25
-        self.latent_ydim = fmaps_out # 1024
+        self.latent_xdims = self.window_size // (2**(self.depth - 1)) # 25
+        self.latent_ydims = fmaps_out # 1024
 
         # `embedding_dims` = 1024 * (400/2^4) * N + N
-        embedding_dims = self.num_inputs + self.latent_xdim * \
-                self.latent_ydim * self.depth
+        # embedding_dims = self.num_inputs + self.latent_xdims * \
+        #         self.latent_ydims * self.depth
+        embedding_dims = self.num_inputs + self.latent_xdims * self.latent_ydims * 2
 
-        print(f'attention embedding dims: {embedding_dims}')
         self.attention_block = AttentionBlock(
-                embedding_dims,
-                self.num_inputs,
-                device=self.device)
-
+            embedding_dims,
+            self.num_inputs,
+            device=self.device
+        )
         for level in range(self.depth - 1):
             fmaps_in, fmaps_out = self.compute_fmaps_decoder(level)
-            print(f'right conv: in: {fmaps_in} -> out: {fmaps_out}')
             self.decoder_block.append(
                 ConvBlock(
                     fmaps_in,
                     fmaps_out,
                     self.kernel_size,
                     self.padding
-                )
+                ).to(self.device)
             )
+        output_dims = self.latent_xdims * self.latent_ydims
+        self.feedforward = FeedforwardBlock(
+            embedding_dims,
+            self.hidden_dims,
+            self.latent_xdims,
+            self.latent_ydims,
+        ).to(self.device)
 
-        self.downsample = Downsample(self.downsample_factor)
-        self.upsample = torch.nn.Upsample(
-            scale_factor=self.downsample_factor,
-            mode=self.upsample_mode,
-        )
         self.final_conv = OutputConv(
             self.compute_fmaps_decoder(0)[1],
             self.num_inputs,
             self.final_activation
-        )
+        ).to(self.device)
 
     def forward(self, inputs):
 
@@ -96,55 +103,47 @@ class HybridNet(torch.nn.Module):
 
             embedded_outputs = []
             layer_input = inputs[:, i, :].unsqueeze(1)
-            print(f'layer input: {layer_input.shape}')
 
             for j in range(self.depth - 1):
 
                 conv_out = self.encoder_block[j](layer_input)
-                embedded_outputs.append(conv_out.view(num_samples, -1))
-                print(f'conv out flatten: {conv_out.view(num_samples, -1).shape}')
+                if j == 3:
+                    embedded_outputs.append(conv_out.view(num_samples, -1))
                 downsampled = self.downsample(conv_out)
-                print(f'left pass {j}: {conv_out.shape} -> {downsampled.shape}')
                 layer_input = downsampled
 
             conv_out = self.encoder_block[-1](layer_input) # bottleneck block
-            print(f'bottle neck: {conv_out.shape}')
             flattened_features = conv_out.view(num_samples, -1)
-            print(f'embeds: {flattened_features.shape}')
             embedded_outputs.append(flattened_features)
-            # TODO: fix concat
-            embedded_outputs = torch.cat(embedded_outputs, 1)
-            print(f'cat embeds: {embedded_outputs.shape}')
+            embedded_outputs = torch.cat(embedded_outputs, 1).to(self.device)
 
             one_hot_encoding = self.one_hots[i].repeat(num_samples, 1)
-            print(f'one-hot encoding: {one_hot_encoding.shape}')
 
             embedding = torch.cat((embedded_outputs, one_hot_encoding), 1)
-            print(f'single embedding: {embedding.shape}')
             attention_inputs.append(embedding)
 
         ### attention block ###
-        attention_inputs = torch.stack(attention_inputs, 1)
-        print(f'attention inputs: {attention_inputs.shape}')
+        attention_inputs = torch.stack(attention_inputs, 1).to(self.device)
+        # attention_weights: (b, num_inputs, num_inputs)
+        # attention_outputs: (b, num_inputs, embedding_dims)
         attention_outputs, attention_weights = self.attention_block(attention_inputs)
-        return attention_outputs, attention_weights
 
-#         ### decoder block ###
-#         for i in range(self.num_inputs):
+        ### decoder block ###
+        for i in range(self.num_inputs):
 
-#             # expect shape: (25, 1024)
-#             layer_input = attention_outputs[i, :].view(-1, self.latent_ydim,
-#                                                        self.latent_xdim)
-#             print(f'decoder input: {layer_input.shape}')
+            # layer_input: (b, embedding_dims)
+            attention_output = attention_outputs[:, i, :].unsqueeze(1)
 
-#             for j in range(0, self.depth - 1)[::-1]:
+            ### feedforward block ###
+            layer_input = self.feedforward(attention_output)
 
-#                 upsampled = self.upsample(layer_input)
-#                 conv_output = self.decoder_block[j](upsampled)
-#                 print(f'right conv{j}: {layer_input.shape} -> {upsampled.shape} -> {conv_output.shape}')
-#                 layer_input = conv_output
+            for j in range(0, self.depth - 1)[::-1]:
 
-#         return self.final_conv(layer_input)
+                upsampled = self.upsample(layer_input)
+                conv_output = self.decoder_block[j](upsampled)
+                layer_input = conv_output
+
+        return self.final_conv(layer_input)
 
     def compute_fmaps_encoder(self, level: int) -> tuple[int, int]:
 
@@ -282,22 +281,51 @@ class AttentionBlock(torch.nn.Module):
             vdim=embedding_dims,
             num_heads=1,
             batch_first=True,
+            device=self.device
         )
         self.attention_mask = torch.eye(
                 num_inputs,
                 dtype=torch.bool,
                 device=self.device)
 
-    def forward(self, x):
+    def forward(self, inputs):
 
-        keys, queries, values = x, x, x
+        keys = inputs
+        queries = inputs
+        values = inputs
         attention_outputs, attention_weights = self.attention(
                 queries,
                 keys,
                 values,
-                attn_mask=self.attn_mask)
+                attn_mask=self.attention_mask)
 
         return attention_outputs, attention_weights
+
+
+class FeedforwardBlock(torch.nn.Module):
+
+    def __init__(
+        self,
+        input_dims: int,
+        hidden_dims: int,
+        latent_xdims: int,
+        latent_ydims: int,
+    ):
+        super().__init__()
+
+        self.latent_xdims = latent_xdims
+        self.latent_ydims = latent_ydims
+        self.device = device
+
+        latent_dims = latent_xdims * latent_ydims
+        layers = [torch.nn.Linear(input_dims, hidden_dims),
+                  torch.nn.Linear(hidden_dims, latent_dims)]
+
+        self.mlp = torch.nn.Sequential(*layers)
+
+    def forward(self, inputs):
+
+        return self.mlp(inputs).view(-1, self.latent_ydims, self.latent_xdims)
 
 
 class OutputConv(torch.nn.Module):
@@ -341,9 +369,9 @@ if __name__ == '__main__':
     num_inputs = 6
     window_size = 400
     batch_size = 2
+    device = 'cuda:2'
     # (batch, channels, height, width)
-    x = torch.rand(batch_size, num_inputs, window_size)
-    model = HybridNet(depth, num_inputs, window_size) 
-    y, z = model(x)
-    print(f'output dim: {y.shape}')
-
+    x = torch.rand(batch_size, num_inputs, window_size).to(device)
+    model = HybridNet(depth, num_inputs, window_size, device=device) 
+    y = model(x)
+    print(f'outputs dim: {y.shape}')
