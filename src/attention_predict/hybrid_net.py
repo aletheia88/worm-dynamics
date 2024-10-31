@@ -62,7 +62,7 @@ class HybridNet(torch.nn.Module):
         # `embedding_dims` = 1024 * (400/2^4) * N + N
         # embedding_dims = self.num_inputs + self.latent_xdims * \
         #         self.latent_ydims * self.depth
-        embedding_dims = self.num_inputs + self.latent_xdims * self.latent_ydims * 2
+        embedding_dims = self.num_inputs + self.latent_xdims * self.latent_ydims
 
         self.attention_block = AttentionBlock(
             embedding_dims,
@@ -79,7 +79,6 @@ class HybridNet(torch.nn.Module):
                     self.padding
                 ).to(self.device)
             )
-        output_dims = self.latent_xdims * self.latent_ydims
         self.feedforward = FeedforwardBlock(
             embedding_dims,
             self.hidden_dims,
@@ -88,9 +87,9 @@ class HybridNet(torch.nn.Module):
         ).to(self.device)
 
         self.final_conv = OutputConv(
-            self.compute_fmaps_decoder(0)[1],
-            self.num_inputs,
-            self.final_activation
+            in_channels=self.compute_fmaps_decoder(0)[1],
+            out_channels=1,
+            activation=self.final_activation
         ).to(self.device)
 
     def forward(self, inputs):
@@ -107,14 +106,15 @@ class HybridNet(torch.nn.Module):
             for j in range(self.depth - 1):
 
                 conv_out = self.encoder_block[j](layer_input)
-                if j == 3:
-                    embedded_outputs.append(conv_out.view(num_samples, -1))
+                # if j == 3:
+                #     embedded_outputs.append(conv_out.view(num_samples, -1))
                 downsampled = self.downsample(conv_out)
                 layer_input = downsampled
 
             conv_out = self.encoder_block[-1](layer_input) # bottleneck block
             flattened_features = conv_out.view(num_samples, -1)
             embedded_outputs.append(flattened_features)
+
             embedded_outputs = torch.cat(embedded_outputs, 1).to(self.device)
 
             one_hot_encoding = self.one_hots[i].repeat(num_samples, 1)
@@ -129,6 +129,7 @@ class HybridNet(torch.nn.Module):
         attention_outputs, attention_weights = self.attention_block(attention_inputs)
 
         ### decoder block ###
+        decoded_outputs = []
         for i in range(self.num_inputs):
 
             # layer_input: (b, embedding_dims)
@@ -143,7 +144,12 @@ class HybridNet(torch.nn.Module):
                 conv_output = self.decoder_block[j](upsampled)
                 layer_input = conv_output
 
-        return self.final_conv(layer_input)
+            final_conv = self.final_conv(layer_input)
+            decoded_outputs.append(final_conv)
+
+        model_outputs = torch.cat(decoded_outputs, 1).to(self.device)
+
+        return model_outputs, attention_weights
 
     def compute_fmaps_encoder(self, level: int) -> tuple[int, int]:
 
@@ -315,7 +321,6 @@ class FeedforwardBlock(torch.nn.Module):
 
         self.latent_xdims = latent_xdims
         self.latent_ydims = latent_ydims
-        self.device = device
 
         latent_dims = latent_xdims * latent_ydims
         layers = [torch.nn.Linear(input_dims, hidden_dims),
@@ -373,5 +378,5 @@ if __name__ == '__main__':
     # (batch, channels, height, width)
     x = torch.rand(batch_size, num_inputs, window_size).to(device)
     model = HybridNet(depth, num_inputs, window_size, device=device) 
-    y = model(x)
+    y, attn_weights = model(x)
     print(f'outputs dim: {y.shape}')
