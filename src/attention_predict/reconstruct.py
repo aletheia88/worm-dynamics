@@ -91,7 +91,7 @@ def reconstruct_traces(
                 worm: {
                     'ground_truth': [],
                     'prediction': [],
-                    'attention': [],
+                    'attn_weights': [],
                     'frames': [],
                     'mse': []
                 } for worm in range(num_worms)
@@ -110,12 +110,27 @@ def reconstruct_traces(
                 }
             } for worm in range(num_worms)
         }
+    elif model_type == 'hybrid':
+        reconstructed_traces = {
+            worm: { 
+                'dataset': None,
+                **{
+                    mask_index: {
+                        'ground_truth': [],
+                        'prediction': [],
+                        'attn_weights': [],
+                        'frames': [],
+                        'mse': [],
+                    } for mask_index in range(num_inputs)
+                }
+            } for worm in range(num_worms)
+        }
 
     for i, (inputs, worm, start_frame, end_frame, ds) in tqdm(enumerate(dataloader)):
 
         append = False
-        idx = worm.item()
-        reconstructed_traces[idx]['dataset'] = ds
+        worm_index = worm.item()
+        reconstructed_traces[worm_index]['dataset'] = ds[0]
 
         if start_frame.item() == right_slider:
             append = True
@@ -133,13 +148,14 @@ def reconstruct_traces(
                 outputs, weights = model(inputs)
                 loss = reconstruction_loss(inputs, outputs)
 
-                reconstructed_traces[idx]['attention'].append(weights.cpu().detach().numpy())
-                reconstructed_traces[idx]['ground_truth'].append(inputs.cpu().detach().numpy())
-                reconstructed_traces[idx]['prediction'].append(outputs.cpu().detach().numpy())
-                reconstructed_traces[idx]['frames'].append((start_frame.item(), end_frame.item()))
-                reconstructed_traces[idx]['mse'].append(loss.item())
+                reconstructed_traces[worm_index]['attn_weights'].append(weights.cpu().detach().numpy())
+                reconstructed_traces[worm_index]['ground_truth'].append(inputs.cpu().detach().numpy())
+                reconstructed_traces[worm_index]['prediction'].append(outputs.cpu().detach().numpy())
+                reconstructed_traces[worm_index]['frames'].append((start_frame.item(),
+                                                                   end_frame.item()))
+                reconstructed_traces[worm_index]['mse'].append(loss.item())
 
-            elif model_type == 'unet':
+            elif model_type == 'unet' or model_type == 'hybrid':
 
                 targets = deepcopy(inputs)
 
@@ -147,13 +163,14 @@ def reconstruct_traces(
 
                     # reconstruct after masking out each kind of activity
                     for mask_index in range(num_inputs):
+
                         inputs[:, mask_index, :] = 0
                         outputs = model(inputs)
                         loss = reconstruction_loss(
                                 targets[:, mask_index, :],
                                 outputs[:, mask_index, :])
 
-                        mask_outcomes = reconstructed_traces[idx][mask_index]
+                        mask_outcomes = reconstructed_traces[worm_index][mask_index]
                         mask_outcomes['ground_truth'].append(targets.cpu().detach().numpy())
                         mask_outcomes['prediction'].append(outputs.cpu().detach().numpy())
                         mask_outcomes['frames'].append((start_frame.item(),
@@ -166,9 +183,17 @@ def reconstruct_traces(
 
                     # mask out more than one column at once
                     inputs[:, mask_indices, :] = 0
-                    outputs = model(inputs)
+                    # Replace unmasked data with random noise
+                    # unmask_indices = list(set(list(range(num_inputs))) -
+                    #                       set(mask_indices))
+                    # noise = torch.randn(inputs[:, unmask_indices, :].shape).to(device)
+                    # inputs[:, unmask_indices, :] = noise
+                    if model_type == 'unet':
+                        outputs = model(inputs)
+                    elif model_type == 'hybrid':
+                        outputs, attn_weights = model(inputs)
                     # keep the outcome of applying masking in the first item
-                    mask_outcomes = reconstructed_traces[idx][0]
+                    mask_outcomes = reconstructed_traces[worm_index][0]
                     mask_outcomes['ground_truth'].append(targets.cpu().detach().numpy())
                     mask_outcomes['prediction'].append(outputs.cpu().detach().numpy())
                     mask_outcomes['frames'].append((start_frame.item(),
@@ -176,12 +201,19 @@ def reconstruct_traces(
                     # compute MSE loss for each column reconstruction
                     for i in range(num_inputs):
                         loss = reconstruction_loss(targets[:, i, :], outputs[:, i, :])
-                        reconstructed_traces[idx][i]['mse'].append(loss.item())
+                        reconstructed_traces[worm_index][i]['mse'].append(loss.item())
+
+        elif (not append and model_type == 'hybrid' and len(mask_indices) > 0):
+
+            inputs[:, mask_indices, :] = 0
+            _, attn_weights = model(inputs)
+            mask_outcomes = reconstructed_traces[worm_index][0]
+            mask_outcomes['attn_weights'].append(attn_weights.cpu().detach().numpy())
 
     for i in range(num_worms):
         if model_type == 'attention':
             print(f"\n All frames added to worm{i}: {reconstructed_traces[i]['frames']}")
-        elif model_type == 'unet':
+        elif model_type == 'unet' or model_type == 'hybrid':
             print(f"\n All frames added to worm{i}: {reconstructed_traces[i][0]['frames']}")
 
     return reconstructed_traces
