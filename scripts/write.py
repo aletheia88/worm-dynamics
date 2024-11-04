@@ -323,8 +323,8 @@ if __name__ == "__main__":
     # write_behaviors(max_len, ds_name)
 
     ### Split into training, validation, and testing datasets
-    # ds_name = 'RID_AVE_RIV_AVD_AIN'
-    # random_seed = 1912
+    # ds_name = 'AVA_MC_SMDV_all'
+    # random_seed = 1978
     # split_train_valid_test(ds_name, random_seed=random_seed)
 
     ### Assemble neural and behavioral trace of 1 neuron class and write to npy
@@ -332,15 +332,15 @@ if __name__ == "__main__":
     # gcamp_traces, std_behaviors, reversals = load_single_neuron_class(neuron_class, verbose=True)
 
     ### Assemble specific neural and behavioral pairings
-    # neuron_class = 'MC'
+    # neuron_class = 'AVA'
     # max_len = 1600
-    # file_name = 'MC_pumping'
+    # file_name = 'AVA_velocity'
     # write_specific_pairings(neuron_class, max_len, file_name)
 
     ### Assemble data with missing neurons
-    # neuron_classes = ['RID', 'AVE', 'RIV', 'AVD', 'AIN']
+    # neuron_classes = ['AVA', 'MC']
     # max_len = 1600
-    # file_name = 'RID_AVE_RIV_AVD_AIN'
+    # file_name = 'AVA_MC_velocity'
     # write_data_with_missing_neurons(neuron_classes, max_len, file_name)
 
     ### Create and write shuffled data
@@ -366,8 +366,8 @@ if __name__ == "__main__":
     # write_eval_data(ds_name)
 
     ### Write neuron-behavior data assembled from all recordings available
-    ds_name = 'RID_AVE_RIV_AVD_AIN_all'
-    neuron_classes = ['RID', 'AVE', 'RIV', 'AVD', 'AIN']
-    behavior_index_dict = {'velocity': 5, 'pumping': 6, 'head_angle': 7}
+    ds_name = 'AVA_MC_SMDV_all'
+    neuron_classes = ['AVA', 'MC', 'SMDV']
+    behavior_index_dict = {'velocity': 3, 'pumping': 4, 'head_angle': 5}
     write_all_data(ds_name, neuron_classes, behavior_index_dict)
 
