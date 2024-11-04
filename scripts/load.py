@@ -15,12 +15,18 @@ def assemble_all(neuron_classes, behavior_index_dict, max_len=1600):
         all_outputs[neuron_class] = by_class(neuron_class)
         datasets += all_outputs[neuron_class]['datasets']
 
-    # get unique datasets
     unique_datasets = np.unique(datasets).tolist()
     num_behaviors = len(behavior_index_dict)
+    num_neurons = len(neuron_classes)
+    num_columns = num_behaviors + num_neurons
+
+    velocity_index = behavior_index_dict['velocity']
+    pumping_index = behavior_index_dict['pumping']
+    angle_index = behavior_index_dict['head_angle']
+
     assembled_data = np.zeros((
         len(unique_datasets),
-        len(neuron_classes) + num_behaviors,
+        num_neurons + num_behaviors,
         max_len))
 
     for i, ds in enumerate(unique_datasets):
@@ -30,17 +36,33 @@ def assemble_all(neuron_classes, behavior_index_dict, max_len=1600):
             output = all_outputs[neuron_class]
 
             if ds in output['datasets']:
+
                 ds_index = output['datasets'].index(ds)
                 assembled_data[i, j, :] = output['neuron_traces'][ds_index]
 
                 behaviors = output['behavior_traces']
-                velocity_index = behavior_index_dict['velocity']
-                pumping_index = behavior_index_dict['pumping']
-                angle_index = behavior_index_dict['head_angle']
-
                 assembled_data[i, velocity_index, :] = behaviors['velocity'][ds_index]
                 assembled_data[i, pumping_index, :] = behaviors['pumping'][ds_index]
                 assembled_data[i, angle_index, :] = behaviors['head_angle'][ds_index]
+
+    # normalize neural traces across animals
+    for i in range(num_neurons):
+        all_neural_traces = assembled_data[:, i, :]
+        assembled_data[:, i, :] = all_neural_traces / (2 * np.mean(all_neural_traces))-1
+
+    # normalize velocity traces
+    all_velocity_traces = assembled_data[:, velocity_index, :]
+    assembled_data[:, velocity_index, :] = all_velocity_traces * 10
+    # normalize pumping
+    all_pumping_traces = assembled_data[:, pumping_index, :]
+    assembled_data[:, pumping_index, :] = all_pumping_traces * 2 - 1
+    # normalize head angle
+    all_head_angle_traces = assembled_data[:, angle_index, :]
+    min_val = np.min(all_head_angle_traces)
+    max_val = np.max(all_head_angle_traces)
+    normalized_head_angle = 2 * ((all_head_angle_traces - min_val) /
+                                 (max_val - min_val)) - 1
+    assembled_data[:, angle_index, :] = normalized_head_angle
 
     return assembled_data, unique_datasets
 
@@ -647,9 +669,8 @@ if __name__ == "__main__":
     # print(f'maximum unique datasets: {len(np.unique(assembled_datasets))}')
 
     ### Assemble traces for multiple neuron classes from all datasets
-    neuron_classes = ['RID', 'AVE', 'RIV', 'AVD', 'AIN']
-    behavior_index_dict = {'velocity': 5, 'pumping': 6, 'head_angle': 7}
+    neuron_classes = ['AVA', 'MC', 'SMDV']
+    behavior_index_dict = {'velocity': 3, 'pumping': 4, 'head_angle': 5}
     assembled_data, datasets = assemble_all(neuron_classes, behavior_index_dict)
     print(f'num datasets: {len(datasets)}')
     print(f'all datasets: {datasets}')
-    print(f'assembled data: {assembled_data}')
