@@ -8,7 +8,7 @@ class HybridNet(torch.nn.Module):
         depth: int,
         num_inputs: int,
         window_size: int,
-        num_fmaps: int = 64,
+        num_fmaps: int = 8,
         fmap_inc_factor: int = 2,
         kernel_size: int = 3,
         padding: str = 'same',
@@ -55,14 +55,19 @@ class HybridNet(torch.nn.Module):
                 ).to(self.device)
             )
 
+        # label indicating the identity of each input column
         self.one_hots = torch.eye(self.num_inputs, device=self.device)
-        self.latent_xdims = self.window_size // (2**(self.depth - 1)) # 25
-        self.latent_ydims = fmaps_out # 1024
+        # label indicating if a given neuron is missing
+        self.recorded_encoding = torch.tensor([1, 0], device=self.device)
+        self.missing_encoding = torch.tensor([0, 1], device=self.device)
+
+        self.latent_xdims = self.window_size // (2**(self.depth - 1))
+        self.latent_ydims = fmaps_out
 
         # `embedding_dims` = 1024 * (400/2^4) * N + N
         # embedding_dims = self.num_inputs + self.latent_xdims * \
         #         self.latent_ydims * self.depth
-        embedding_dims = self.num_inputs + self.latent_xdims * self.latent_ydims
+        embedding_dims = 2 + self.num_inputs + self.latent_xdims * self.latent_ydims
 
         self.attention_block = AttentionBlock(
             embedding_dims,
@@ -92,6 +97,19 @@ class HybridNet(torch.nn.Module):
             activation=self.final_activation
         ).to(self.device)
 
+    def label_neuron(self, layer_input, num_samples):
+
+        labels = []
+        for i in range(num_samples):
+
+            if (torch.max(layer_input[i, 0, :]).item() == 0
+                and torch.min(layer_input[i, 0, :]).item() == 0):
+                labels.append(self.missing_encoding)
+            else:
+                labels.append(self.recorded_encoding)
+
+        return torch.stack(labels).to(self.device)
+
     def forward(self, inputs):
 
         num_samples = inputs.shape[0]
@@ -102,6 +120,9 @@ class HybridNet(torch.nn.Module):
 
             embedded_outputs = []
             layer_input = inputs[:, i, :].unsqueeze(1)
+
+            # label that indicates if this neuron is missing
+            label = self.label_neuron(layer_input, num_samples)
 
             for j in range(self.depth - 1):
 
@@ -119,7 +140,7 @@ class HybridNet(torch.nn.Module):
 
             one_hot_encoding = self.one_hots[i].repeat(num_samples, 1)
 
-            embedding = torch.cat((embedded_outputs, one_hot_encoding), 1)
+            embedding = torch.cat((embedded_outputs, one_hot_encoding, label), 1)
             attention_inputs.append(embedding)
 
         ### attention block ###
@@ -127,7 +148,6 @@ class HybridNet(torch.nn.Module):
         # attention_weights: (b, num_inputs, num_inputs)
         # attention_outputs: (b, num_inputs, embedding_dims)
         attention_outputs, attention_weights = self.attention_block(attention_inputs)
-
         ### decoder block ###
         decoded_outputs = []
         for i in range(self.num_inputs):
@@ -371,7 +391,7 @@ class OutputConv(torch.nn.Module):
 if __name__ == '__main__':
 
     depth = 5
-    num_inputs = 6
+    num_inputs = 3
     window_size = 400
     batch_size = 2
     device = 'cuda:2'
