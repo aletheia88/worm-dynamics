@@ -48,14 +48,15 @@ def assemble_all(neuron_classes, behavior_index_dict, max_len=1600):
     # normalize neural traces across animals
     for i in range(num_neurons):
         all_neural_traces = assembled_data[:, i, :]
-        assembled_data[:, i, :] = all_neural_traces / (2 * np.mean(all_neural_traces))-1
+        assembled_data[:, i, :] = all_neural_traces / (2 * np.mean(all_neural_traces)) - 1
+        # assembled_data[:, i, :] = 2 * all_neural_traces / np.mean(all_neural_traces) - 1
 
     # normalize velocity traces
     all_velocity_traces = assembled_data[:, velocity_index, :]
     assembled_data[:, velocity_index, :] = all_velocity_traces * 10
     # normalize pumping
     all_pumping_traces = assembled_data[:, pumping_index, :]
-    assembled_data[:, pumping_index, :] = all_pumping_traces * 2 - 1
+    assembled_data[:, pumping_index, :] = all_pumping_traces / 2 - 1
     # normalize head angle
     all_head_angle_traces = assembled_data[:, angle_index, :]
     min_val = np.min(all_head_angle_traces)
