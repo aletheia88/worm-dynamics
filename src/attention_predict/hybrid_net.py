@@ -6,7 +6,8 @@ class HybridNet(torch.nn.Module):
     def __init__(
         self,
         depth: int,
-        num_inputs: int,
+        num_neurons: int,
+        num_behaviors: int,
         window_size: int,
         num_fmaps: int = 8,
         fmap_inc_factor: int = 2,
@@ -16,12 +17,13 @@ class HybridNet(torch.nn.Module):
         hidden_dims: int = 512,
         upsample_mode: str = 'nearest',
         final_activation: torch.nn.Module | None = None,
+        attention_scheme: str = 'NfromN',
         device: str = 'cpu',
     ):
         super().__init__()
 
         self.depth = depth
-        self.num_inputs = num_inputs
+        self.num_inputs = num_neurons + num_behaviors
         self.window_size = window_size
         self.num_fmaps = num_fmaps
         self.fmap_inc_factor = fmap_inc_factor
@@ -67,11 +69,14 @@ class HybridNet(torch.nn.Module):
         # `embedding_dims` = 1024 * (400/2^4) * N + N
         # embedding_dims = self.num_inputs + self.latent_xdims * \
         #         self.latent_ydims * self.depth
-        embedding_dims = 2 + self.num_inputs + self.latent_xdims * self.latent_ydims
+        embedding_dims = 2 + self.num_inputs + \
+                self.latent_xdims * self.latent_ydims * self.depth
 
         self.attention_block = AttentionBlock(
             embedding_dims,
-            self.num_inputs,
+            num_neurons,
+            num_behaviors,
+            attention_scheme,
             device=self.device
         )
         for level in range(self.depth - 1):
@@ -127,8 +132,7 @@ class HybridNet(torch.nn.Module):
             for j in range(self.depth - 1):
 
                 conv_out = self.encoder_block[j](layer_input)
-                # if j == 3:
-                #     embedded_outputs.append(conv_out.view(num_samples, -1))
+                embedded_outputs.append(conv_out.view(num_samples, -1))
                 downsampled = self.downsample(conv_out)
                 layer_input = downsampled
 
@@ -253,7 +257,6 @@ class ConvBlock(torch.nn.Module):
         out_channels: int,
         kernel_size: int,
         padding: str = "same",
-        ndim: int = 2,
     ):
         """A convolution block for a U-Net. Contains two convolutions, each followed by
             a ReLU.
@@ -267,8 +270,6 @@ class ConvBlock(torch.nn.Module):
                 NxN square kernel.
             padding (str): The type of convolution padding to use. Either "same" or
                 "valid". Defaults to "same".
-            ndim (int): Number of dimensions for the convolution operation. Use 2 for 2D
-                convolutions and 3 for 3D convolutions. Defaults to 2.
         """
         super().__init__()
         if kernel_size % 2 == 0:
@@ -297,8 +298,14 @@ class ConvBlock(torch.nn.Module):
 
 class AttentionBlock(torch.nn.Module):
 
-    def __init__(self, embedding_dims, num_inputs, device):
-
+    def __init__(
+        self,
+        embedding_dims,
+        num_neurons,
+        num_behaviors,
+        attention_scheme,
+        device
+    ):
         super().__init__()
         self.device = device
         self.attention = torch.nn.MultiheadAttention(
@@ -309,16 +316,81 @@ class AttentionBlock(torch.nn.Module):
             batch_first=True,
             device=self.device
         )
-        self.attention_mask = torch.eye(
-                num_inputs,
-                dtype=torch.bool,
-                device=self.device)
+        self.attention_scheme = attention_scheme
+        ### the full (unmasked) attention matrix
+        # -    |-----N-----|--B--|
+        # |    |xxxxx..xxxx|x...x|
+        # |    |xxxxx..xxxx|x...x|
+        # N    |xxxxx..xxxx|x...x|
+        # |    |xxxxx..xxxx|x...x|
+        # |    |xxxxx..xxxx|x...x|
+        # -    |...........|.....|
+        # |    |xxxxx..xxxx|x...x|
+        # B    |xxxxx..xxxx|x...x|
+        # |    |-----------|-----|
+        ### 'NfromN': attending neurons to reconstruct neurons
+        # -    |-----N-----|--B--|
+        # |    |0..xxxxxxxx|0...0|
+        # |    |..0..xxxxxx|0...0|
+        # N    |xx..0..xxxx|0...0|
+        # |    |xxxx..0..xx|0...0|
+        # |    |xxxxxx..0..|0...0|
+        # -    |-----------|-----|
+        # |    |00000..0000|0...0|
+        # B    |00000..0000|0...0|
+        # |    |-----------|-----|
+        ### 'BfromN': attending neurons to reconstruct behaviors
+        # -    |-----N-----|--B--|
+        # |    |0.........0|0...0|
+        # |    |0.0.......0|0...0|
+        # N    |0..0......0|0...0|
+        # |    |0.....0...0|0...0|
+        # |    |0.......0.0|0...0|
+        # -    |-----------|-----|
+        # |    |xxxxx..xxxx|0...0|
+        # B    |xxxxx..xxxx|0...0|
+        # |    |-----------|-----|
+
+        N = num_neurons
+        B = num_behaviors
+
+        self.attention_quadrants = {
+            'nn': torch.eye(N, device=device),
+            'bb': torch.eye(B, device=device),
+            'nb': torch.zeros(N, B, device=device),
+            'bn': torch.zeros(N, B, device=device),
+        }
+        self.inattention_quadrants = {
+            'nn': torch.ones(N, N, device=device),
+            'bb': torch.ones(B, B, device=device),
+            'nb': torch.ones(N, B, device=device),
+            'bn': torch.ones(B, N, device=device),
+        }
+        self.attention_mask = torch.zeros((N+B, N+B), dtype=torch.bool,
+                                          device=device)
+
+        if self.attention_scheme == 'NfromN':
+            # top-left attention matrix
+            self.attention_mask[:N, :N] = self.attention_quadrants['nn']
+            # top-right attention matrix
+            self.attention_mask[:N, N:] = self.inattention_quadrants['nb']
+            # bottom-left attention matrix
+            self.attention_mask[N:, :N] = self.inattention_quadrants['bn']
+            # bottom-right attention matrix
+            self.attention_mask[N:, N:] = self.inattention_quadrants['bb']
+
+        elif self.attention_scheme == 'NfromB':
+            self.attention_mask[:N, :N] = self.inattention_quadrants['nn']
+            self.attention_mask[:N, N:] = self.attention_quadrants['nb']
+            self.attention_mask[N:, :N] = self.inattention_quadrants['bn']
+            self.attention_mask[N:, N:] = self.inattention_quadrants['bb']
 
     def forward(self, inputs):
 
         keys = inputs
         queries = inputs
         values = inputs
+
         attention_outputs, attention_weights = self.attention(
                 queries,
                 keys,
@@ -360,7 +432,6 @@ class OutputConv(torch.nn.Module):
         in_channels: int,
         out_channels: int,
         activation: torch.nn.Module | None = None,
-        ndim: int = 2,
     ):
         """
         A module that uses a convolution with kernel size 1 to get the appropriate
@@ -373,8 +444,6 @@ class OutputConv(torch.nn.Module):
             activation (str | None, optional): Accepts the name of any torch activation
                 function  (e.g., ``ReLU`` for ``torch.nn.ReLU``) or None for no final
                 activation. Defaults to None.
-            ndim (int): Number of dimensions for convolution operation. Use 2 for 2D
-                convolutions and 3 for 3D convolutions. Defaults to 2.
         """
         super().__init__()
         self.final_conv = torch.nn.Conv1d(in_channels, out_channels, 1, padding=0)
@@ -390,13 +459,21 @@ class OutputConv(torch.nn.Module):
 
 if __name__ == '__main__':
 
-    depth = 5
-    num_inputs = 3
+    depth = 3
+    num_neurons = 3
+    num_behaviors = 3
+    num_inputs = num_neurons + num_behaviors
     window_size = 400
     batch_size = 2
-    device = 'cuda:2'
+    device = 'cuda:3'
     # (batch, channels, height, width)
     x = torch.rand(batch_size, num_inputs, window_size).to(device)
-    model = HybridNet(depth, num_inputs, window_size, device=device) 
+    model = HybridNet(
+            depth,
+            num_neurons,
+            num_behaviors,
+            window_size,
+            attention_scheme='NfromB',
+            device=device)
     y, attn_weights = model(x)
     print(f'outputs dim: {y.shape}')
