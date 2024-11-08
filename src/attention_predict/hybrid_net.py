@@ -308,6 +308,7 @@ class AttentionBlock(torch.nn.Module):
     ):
         super().__init__()
         self.device = device
+        ### TODO: replace self.attention with my own implementation
         self.attention = torch.nn.MultiheadAttention(
             embedding_dims, # key dims
             kdim=embedding_dims,
@@ -317,7 +318,7 @@ class AttentionBlock(torch.nn.Module):
             device=self.device
         )
         self.attention_scheme = attention_scheme
-        ### the full (unmasked) attention matrix
+        ### fully attended attention matrix
         # -    |-----N-----|--B--|
         # |    |xxxxx..xxxx|x...x|
         # |    |xxxxx..xxxx|x...x|
@@ -423,6 +424,63 @@ class FeedforwardBlock(torch.nn.Module):
     def forward(self, inputs):
 
         return self.mlp(inputs).view(-1, self.latent_ydims, self.latent_xdims)
+
+
+class MultiHeadAttention(torch.nn.Module):
+
+    def __init__(self, attention_mask, num_inputs, num_heads):
+
+        super().__init__()
+
+        self.heads = nn.ModuleList(
+                [Head(attention_mask) for _ in range(num_heads)])
+
+    def forward(self, inputs):
+        return torch.cat([
+            head(
+                key=inputs,
+                query=inputs,
+                value=inputs
+            ) for head in self.heads], dim=-1)
+
+
+class Head(torch.nn.Module):
+
+    def __init__(self, attention_mask, embedding_dims, num_inputs):
+
+        super().__init__()
+        self.sqrt_dk = num_inputs**0.5
+        self.attention_mask = attention_mask
+
+        self.key_weights = nn.Linear(
+                embedding_dims,
+                num_inputs,
+                bias=False)
+        self.query_weights = nn.Linear(
+                embedding_dims,
+                num_inputs,
+                bias=False)
+        self.value_weights = nn.Linear(
+                embedding_dims,
+                num_inputs,
+                bias=False)
+        self.register_buffer('mask', attention_mask)
+
+    def forward(self, key, query, value):
+
+        weighted_key = self.key_weights(key)
+        weighted_query = self.query_weights(query)
+        weighted_value = self.value_weights(value)
+
+        attention_matrix = weighted_query @ weighted_key.transpose(-2, -1) * \
+                           self.sqrt_dk
+        # apply attention masking
+        attention_matrix = attention_matrix.masked_fill(self.attention_mask,
+                                                        float('inf'))
+        attention_matrix = torch.nn.functional.softmax(attention_matrix, dim=-1)
+        attention_outputs = attention_matrix @ weighted_value
+
+        return attention_outputs, attention_matrix
 
 
 class OutputConv(torch.nn.Module):
