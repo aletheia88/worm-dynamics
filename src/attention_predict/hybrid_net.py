@@ -23,6 +23,7 @@ class HybridNet(torch.nn.Module):
         super().__init__()
 
         self.depth = depth
+        self.num_neurons = num_neurons
         self.num_inputs = num_neurons + num_behaviors
         self.window_size = window_size
         self.num_fmaps = num_fmaps
@@ -79,6 +80,14 @@ class HybridNet(torch.nn.Module):
             attention_scheme,
             device=self.device
         )
+
+        self.feedforward = FeedforwardBlock(
+            embedding_dims,
+            self.hidden_dims,
+            self.latent_xdims,
+            self.latent_ydims,
+        ).to(self.device)
+
         for level in range(self.depth - 1):
             fmaps_in, fmaps_out = self.compute_fmaps_decoder(level)
             self.decoder_block.append(
@@ -89,12 +98,6 @@ class HybridNet(torch.nn.Module):
                     self.padding
                 ).to(self.device)
             )
-        self.feedforward = FeedforwardBlock(
-            embedding_dims,
-            self.hidden_dims,
-            self.latent_xdims,
-            self.latent_ydims,
-        ).to(self.device)
 
         self.final_conv = OutputConv(
             in_channels=self.compute_fmaps_decoder(0)[1],
@@ -125,9 +128,15 @@ class HybridNet(torch.nn.Module):
 
             embedded_outputs = []
             layer_input = inputs[:, i, :].unsqueeze(1)
+            print(f'layer input: {layer_input}')
 
-            # label that indicates if this neuron is missing
-            label = self.label_neuron(layer_input, num_samples)
+            # create labels for behaviors that are always recorded
+            if i >= self.num_neurons:
+                labels = [self.recorded_encoding for _ in range(num_samples)]
+                label = torch.stack(labels).to(self.device)
+            # create label for single neuron to indicate if it is recorded
+            else:
+                label = self.label_neuron(layer_input, num_samples)
 
             for j in range(self.depth - 1):
 
@@ -135,28 +144,33 @@ class HybridNet(torch.nn.Module):
                 embedded_outputs.append(conv_out.view(num_samples, -1))
                 downsampled = self.downsample(conv_out)
                 layer_input = downsampled
+                print(f'layer feature: {layer_input}')
 
             conv_out = self.encoder_block[-1](layer_input) # bottleneck block
             flattened_features = conv_out.view(num_samples, -1)
+            ### TODO: fix nan values
+            print(f'flattened_features: {flattened_features}')
             embedded_outputs.append(flattened_features)
 
             embedded_outputs = torch.cat(embedded_outputs, 1).to(self.device)
-
             one_hot_encoding = self.one_hots[i].repeat(num_samples, 1)
 
             embedding = torch.cat((embedded_outputs, one_hot_encoding, label), 1)
+            print(f'embedding: {embedding.shape}')
             attention_inputs.append(embedding)
 
         ### attention block ###
         attention_inputs = torch.stack(attention_inputs, 1).to(self.device)
-        # attention_weights: (b, num_inputs, num_inputs)
-        # attention_outputs: (b, num_inputs, embedding_dims)
+        # attention_weights: (num_samples, num_inputs, num_inputs)
+        # attention_outputs: (num_samples, num_inputs, embedding_dims)
+        print(f'attention_inputs: {attention_inputs}')
         attention_outputs, attention_weights = self.attention_block(attention_inputs)
+
         ### decoder block ###
         decoded_outputs = []
         for i in range(self.num_inputs):
 
-            # layer_input: (b, embedding_dims)
+            # feedforward block input: (num_samples, 1, embedding_dims)
             attention_output = attention_outputs[:, i, :].unsqueeze(1)
 
             ### feedforward block ###
@@ -296,6 +310,94 @@ class ConvBlock(torch.nn.Module):
         return output
 
 
+class Head(torch.nn.Module):
+
+    def __init__(self, attention_mask, embedding_dims, num_inputs, device):
+
+        super().__init__()
+        self.sqrt_dk = num_inputs**0.5
+        self.attention_mask = attention_mask
+
+        self.key_weights = torch.nn.Linear(
+                embedding_dims,
+                embedding_dims,
+                bias=False,
+                device=device)
+        self.query_weights = torch.nn.Linear(
+                embedding_dims,
+                embedding_dims,
+                bias=False,
+                device=device)
+        self.value_weights = torch.nn.Linear(
+                embedding_dims,
+                embedding_dims,
+                bias=False,
+                device=device)
+        # self.register_buffer('mask', attention_mask)
+
+    def forward(self, key, query, value):
+
+        print(f'key: {key.shape}')
+        print(f'query: {query.shape}')
+        print(f'value: {value.shape}')
+
+        weighted_key = self.key_weights(key)
+        weighted_query = self.query_weights(query)
+        weighted_value = self.value_weights(value)
+        attention_matrix = weighted_query @ weighted_key.transpose(-2, -1) * \
+                           self.sqrt_dk
+        print(f'queried: {weighted_query}')
+        print(f'keyed: {weighted_key}')
+        # apply attention masking
+        print(self.attention_mask)
+        print(f'premask attention matrix: {attention_matrix}')
+        attention_matrix = attention_matrix.masked_fill(self.attention_mask,
+                                                        float('-inf'))
+        print(f'attention_matrix: {attention_matrix}')
+        attention_matrix = torch.nn.functional.softmax(attention_matrix, dim=-1)
+        print(f'softmax attention_matrix: {attention_matrix}')
+        attention_outputs = attention_matrix @ weighted_value
+        print(f'attention_outputs: {attention_outputs}')
+
+        return attention_outputs, attention_matrix
+
+
+class MultiHeadAttention(torch.nn.Module):
+
+    def __init__(
+        self,
+        attention_mask,
+        embedding_dims,
+        num_inputs,
+        num_heads,
+        device
+    ):
+        super().__init__()
+        # single-headed self-attention
+        self.head = Head(
+                attention_mask,
+                embedding_dims,
+                num_inputs,
+                device)
+        # self.heads = torch.nn.ModuleList([Head(
+        #         attention_mask,
+        #         embedding_dims,
+        #         num_inputs,
+        #         device
+        #     ) for _ in range(num_heads)])
+
+    def forward(self, inputs):
+        # single-headed self-attention
+        print(f'attention inputs: {inputs}]\n')
+        return self.head(key=inputs, query=inputs, value=inputs)
+        # multi-headed self-attention
+        # return torch.cat([head(
+        #         key=inputs,
+        #         query=inputs,
+        #         value=inputs
+        #     )[0] for head in self.heads])
+
+
 class AttentionBlock(torch.nn.Module):
 
     def __init__(
@@ -307,17 +409,14 @@ class AttentionBlock(torch.nn.Module):
         device
     ):
         super().__init__()
-        self.device = device
-        ### TODO: replace self.attention with my own implementation
-        self.attention = torch.nn.MultiheadAttention(
-            embedding_dims, # key dims
-            kdim=embedding_dims,
-            vdim=embedding_dims,
-            num_heads=1,
-            batch_first=True,
-            device=self.device
-        )
-        self.attention_scheme = attention_scheme
+        # self.attention = torch.nn.MultiheadAttention(
+        #     embedding_dims, # key dims
+        #     kdim=embedding_dims,
+        #     vdim=embedding_dims,
+        #     num_heads=1,
+        #     batch_first=True,
+        #     device=self.device
+        # )
         ### fully attended attention matrix
         # -    |-----N-----|--B--|
         # |    |xxxxx..xxxx|x...x|
@@ -354,49 +453,50 @@ class AttentionBlock(torch.nn.Module):
 
         N = num_neurons
         B = num_behaviors
+        num_inputs = N + B
 
-        self.attention_quadrants = {
+        attention_quadrants = {
             'nn': torch.eye(N, device=device),
             'bb': torch.eye(B, device=device),
             'nb': torch.zeros(N, B, device=device),
             'bn': torch.zeros(N, B, device=device),
         }
-        self.inattention_quadrants = {
+        inattention_quadrants = {
             'nn': torch.ones(N, N, device=device),
             'bb': torch.ones(B, B, device=device),
             'nb': torch.ones(N, B, device=device),
             'bn': torch.ones(B, N, device=device),
         }
-        self.attention_mask = torch.zeros((N+B, N+B), dtype=torch.bool,
-                                          device=device)
+        attention_mask = torch.zeros((num_inputs, num_inputs),
+                                     dtype=torch.bool, device=device)
 
-        if self.attention_scheme == 'NfromN':
+        if attention_scheme == 'NfromN':
             # top-left attention matrix
-            self.attention_mask[:N, :N] = self.attention_quadrants['nn']
+            attention_mask[:N, :N] = attention_quadrants['nn']
             # top-right attention matrix
-            self.attention_mask[:N, N:] = self.inattention_quadrants['nb']
+            attention_mask[:N, N:] = inattention_quadrants['nb']
             # bottom-left attention matrix
-            self.attention_mask[N:, :N] = self.inattention_quadrants['bn']
+            attention_mask[N:, :N] = inattention_quadrants['bn']
             # bottom-right attention matrix
-            self.attention_mask[N:, N:] = self.inattention_quadrants['bb']
+            attention_mask[N:, N:] = inattention_quadrants['bb']
 
-        elif self.attention_scheme == 'NfromB':
-            self.attention_mask[:N, :N] = self.inattention_quadrants['nn']
-            self.attention_mask[:N, N:] = self.attention_quadrants['nb']
-            self.attention_mask[N:, :N] = self.inattention_quadrants['bn']
-            self.attention_mask[N:, N:] = self.inattention_quadrants['bb']
+        elif attention_scheme == 'NfromB':
+            attention_mask[:N, :N] = inattention_quadrants['nn']
+            attention_mask[:N, N:] = attention_quadrants['nb']
+            attention_mask[N:, :N] = inattention_quadrants['bn']
+            attention_mask[N:, N:] = inattention_quadrants['bb']
+
+        self.attention = MultiHeadAttention(
+                attention_mask,
+                embedding_dims,
+                num_inputs,
+                num_heads=1,
+                device=device)
+        print(f'{attention_mask}')
 
     def forward(self, inputs):
 
-        keys = inputs
-        queries = inputs
-        values = inputs
-
-        attention_outputs, attention_weights = self.attention(
-                queries,
-                keys,
-                values,
-                attn_mask=self.attention_mask)
+        attention_outputs, attention_weights = self.attention(inputs)
 
         return attention_outputs, attention_weights
 
@@ -424,63 +524,6 @@ class FeedforwardBlock(torch.nn.Module):
     def forward(self, inputs):
 
         return self.mlp(inputs).view(-1, self.latent_ydims, self.latent_xdims)
-
-
-class MultiHeadAttention(torch.nn.Module):
-
-    def __init__(self, attention_mask, num_inputs, num_heads):
-
-        super().__init__()
-
-        self.heads = nn.ModuleList(
-                [Head(attention_mask) for _ in range(num_heads)])
-
-    def forward(self, inputs):
-        return torch.cat([
-            head(
-                key=inputs,
-                query=inputs,
-                value=inputs
-            ) for head in self.heads], dim=-1)
-
-
-class Head(torch.nn.Module):
-
-    def __init__(self, attention_mask, embedding_dims, num_inputs):
-
-        super().__init__()
-        self.sqrt_dk = num_inputs**0.5
-        self.attention_mask = attention_mask
-
-        self.key_weights = nn.Linear(
-                embedding_dims,
-                num_inputs,
-                bias=False)
-        self.query_weights = nn.Linear(
-                embedding_dims,
-                num_inputs,
-                bias=False)
-        self.value_weights = nn.Linear(
-                embedding_dims,
-                num_inputs,
-                bias=False)
-        self.register_buffer('mask', attention_mask)
-
-    def forward(self, key, query, value):
-
-        weighted_key = self.key_weights(key)
-        weighted_query = self.query_weights(query)
-        weighted_value = self.value_weights(value)
-
-        attention_matrix = weighted_query @ weighted_key.transpose(-2, -1) * \
-                           self.sqrt_dk
-        # apply attention masking
-        attention_matrix = attention_matrix.masked_fill(self.attention_mask,
-                                                        float('inf'))
-        attention_matrix = torch.nn.functional.softmax(attention_matrix, dim=-1)
-        attention_outputs = attention_matrix @ weighted_value
-
-        return attention_outputs, attention_matrix
 
 
 class OutputConv(torch.nn.Module):
@@ -535,3 +578,17 @@ if __name__ == '__main__':
             device=device)
     y, attn_weights = model(x)
     print(f'outputs dim: {y.shape}')
+
+    ## test the attention block
+    # embedding_dims = 3205
+    # attention_scheme = 'NfromN'
+    # attention_block = AttentionBlock(
+    #     embedding_dims,
+    #     num_neurons,
+    #     num_behaviors,
+    #     attention_scheme,
+    #     device
+    # )
+    # attention_inputs = torch.rand(batch_size, num_inputs, embedding_dims, device=device) 
+    # attention_outputs, attention_weights = attention_block(attention_inputs)
+
