@@ -128,7 +128,6 @@ class HybridNet(torch.nn.Module):
 
             embedded_outputs = []
             layer_input = inputs[:, i, :].unsqueeze(1)
-            print(f'layer input: {layer_input}')
 
             # create labels for behaviors that are always recorded
             if i >= self.num_neurons:
@@ -144,26 +143,21 @@ class HybridNet(torch.nn.Module):
                 embedded_outputs.append(conv_out.view(num_samples, -1))
                 downsampled = self.downsample(conv_out)
                 layer_input = downsampled
-                print(f'layer feature: {layer_input}')
 
             conv_out = self.encoder_block[-1](layer_input) # bottleneck block
             flattened_features = conv_out.view(num_samples, -1)
-            ### TODO: fix nan values
-            print(f'flattened_features: {flattened_features}')
             embedded_outputs.append(flattened_features)
 
             embedded_outputs = torch.cat(embedded_outputs, 1).to(self.device)
             one_hot_encoding = self.one_hots[i].repeat(num_samples, 1)
 
             embedding = torch.cat((embedded_outputs, one_hot_encoding, label), 1)
-            print(f'embedding: {embedding.shape}')
             attention_inputs.append(embedding)
 
         ### attention block ###
         attention_inputs = torch.stack(attention_inputs, 1).to(self.device)
         # attention_weights: (num_samples, num_inputs, num_inputs)
         # attention_outputs: (num_samples, num_inputs, embedding_dims)
-        print(f'attention_inputs: {attention_inputs}')
         attention_outputs, attention_weights = self.attention_block(attention_inputs)
 
         ### decoder block ###
@@ -172,10 +166,8 @@ class HybridNet(torch.nn.Module):
 
             # feedforward block input: (num_samples, 1, embedding_dims)
             attention_output = attention_outputs[:, i, :].unsqueeze(1)
-
             ### feedforward block ###
             layer_input = self.feedforward(attention_output)
-
             for j in range(0, self.depth - 1)[::-1]:
 
                 upsampled = self.upsample(layer_input)
@@ -315,7 +307,7 @@ class Head(torch.nn.Module):
     def __init__(self, attention_mask, embedding_dims, num_inputs, device):
 
         super().__init__()
-        self.sqrt_dk = num_inputs**0.5
+        self.sqrt_dk = embedding_dims**0.5
         self.attention_mask = attention_mask
 
         self.key_weights = torch.nn.Linear(
@@ -337,27 +329,21 @@ class Head(torch.nn.Module):
 
     def forward(self, key, query, value):
 
-        print(f'key: {key.shape}')
-        print(f'query: {query.shape}')
-        print(f'value: {value.shape}')
-
         weighted_key = self.key_weights(key)
         weighted_query = self.query_weights(query)
         weighted_value = self.value_weights(value)
         attention_matrix = weighted_query @ weighted_key.transpose(-2, -1) * \
                            self.sqrt_dk
-        print(f'queried: {weighted_query}')
-        print(f'keyed: {weighted_key}')
+
         # apply attention masking
-        print(self.attention_mask)
-        print(f'premask attention matrix: {attention_matrix}')
         attention_matrix = attention_matrix.masked_fill(self.attention_mask,
                                                         float('-inf'))
-        print(f'attention_matrix: {attention_matrix}')
         attention_matrix = torch.nn.functional.softmax(attention_matrix, dim=-1)
-        print(f'softmax attention_matrix: {attention_matrix}')
+        attention_matrix = torch.where(
+                torch.isnan(attention_matrix),
+                torch.zeros_like(attention_matrix),
+                attention_matrix)
         attention_outputs = attention_matrix @ weighted_value
-        print(f'attention_outputs: {attention_outputs}')
 
         return attention_outputs, attention_matrix
 
@@ -388,7 +374,6 @@ class MultiHeadAttention(torch.nn.Module):
 
     def forward(self, inputs):
         # single-headed self-attention
-        print(f'attention inputs: {inputs}]\n')
         return self.head(key=inputs, query=inputs, value=inputs)
         # multi-headed self-attention
         # return torch.cat([head(
@@ -415,7 +400,7 @@ class AttentionBlock(torch.nn.Module):
         #     vdim=embedding_dims,
         #     num_heads=1,
         #     batch_first=True,
-        #     device=self.device
+        #     device=device
         # )
         ### fully attended attention matrix
         # -    |-----N-----|--B--|
@@ -486,16 +471,21 @@ class AttentionBlock(torch.nn.Module):
             attention_mask[N:, :N] = inattention_quadrants['bn']
             attention_mask[N:, N:] = inattention_quadrants['bb']
 
+        self.attention_mask = attention_mask
         self.attention = MultiHeadAttention(
                 attention_mask,
                 embedding_dims,
                 num_inputs,
                 num_heads=1,
                 device=device)
-        print(f'{attention_mask}')
 
     def forward(self, inputs):
 
+        # attention_outputs, attention_weights = self.attention(
+        #         inputs,
+        #         inputs,
+        #         inputs,
+        #         attn_mask=self.attention_mask)
         attention_outputs, attention_weights = self.attention(inputs)
 
         return attention_outputs, attention_weights
