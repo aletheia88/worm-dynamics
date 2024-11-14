@@ -8,16 +8,16 @@ import torch
 
 
 def train(
-        num_neurons,
-        training_dataset,
-        model,
-        batch_size,
-        num_iterations,
-        num_epochs,
-        learning_rate,
-        random_seed,
-        log_directory,
-        log_ckpt_freq=None,
+    num_neurons,
+    training_dataset,
+    model,
+    batch_size,
+    num_iterations,
+    num_epochs,
+    learning_rate,
+    random_seed,
+    log_directory,
+    log_ckpt_freq=None,
 ):
 
     ckpt_directory = f'{log_directory}/checkpoints'
@@ -33,7 +33,6 @@ def train(
 
     loss_dict = {'training': [], 'validation': []}
     num_inputs = next(iter(training_dataloader))[0].shape[1]
-    num_batches = len(training_dataloader)
 
     neuron_indices = list(range(num_neurons))
     behavior_indices = list(range(num_neurons, num_inputs))
@@ -84,7 +83,7 @@ def train(
             optimizer.step()
             loss_average += loss.item()
 
-        loss_dict['training'].append(loss_average / num_batches)
+        loss_dict['training'].append(loss_average / num_samples)
 
         with open(f'{log_directory}/losses.json', 'w') as f:
             json.dump(loss_dict, f, indent=4)
@@ -97,7 +96,7 @@ def train(
                     'state_dict': model.state_dict(),
                     'attention': attention_weights,
                     'optimizer': optimizer.state_dict(),
-                    'training_loss': loss_average / num_batches
+                    'training_loss': loss_average / num_samples
                 },
                     f'{log_directory}/checkpoints/model_ckpt{n_epoch+1}.pt'
             )
