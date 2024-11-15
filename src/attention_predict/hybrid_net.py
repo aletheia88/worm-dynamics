@@ -394,14 +394,7 @@ class AttentionBlock(torch.nn.Module):
         device
     ):
         super().__init__()
-        # self.attention = torch.nn.MultiheadAttention(
-        #     embedding_dims, # key dims
-        #     kdim=embedding_dims,
-        #     vdim=embedding_dims,
-        #     num_heads=1,
-        #     batch_first=True,
-        #     device=device
-        # )
+
         ### fully attended attention matrix
         # -    |-----N-----|--B--|
         # |    |xxxxx..xxxx|x...x|
@@ -471,7 +464,32 @@ class AttentionBlock(torch.nn.Module):
             attention_mask[N:, :N] = inattention_quadrants['bn']
             attention_mask[N:, N:] = inattention_quadrants['bb']
 
+        elif attention_scheme == 'BfromB':
+            attention_mask[:N, :N] = inattention_quadrants['nn']
+            attention_mask[:N, N:] = inattention_quadrants['nb']
+            attention_mask[N:, :N] = inattention_quadrants['bn']
+            attention_mask[N:, N:] = attention_quadrants['bb']
+
+        elif attention_scheme == 'BfromN':
+            attention_mask[:N, :N] = inattention_quadrants['nn']
+            attention_mask[:N, N:] = inattention_quadrants['nb']
+            attention_mask[N:, :N] = attention_quadrants['bn']
+            attention_mask[N:, N:] = inattention_quadrants['bb']
+
+        elif attention_scheme == 'all':
+            attention_mask[:N, :N] = attention_quadrants['nn']
+            attention_mask[:N, N:] = attention_quadrants['nb']
+            attention_mask[N:, :N] = attention_quadrants['bn']
+            attention_mask[N:, N:] = attention_quadrants['bb']
+
         self.attention_mask = attention_mask
+        # self.attention = torch.nn.MultiheadAttention(
+        #         embedding_dims,
+        #         kdim=embedding_dims,
+        #         vdim=embedding_dims,
+        #         num_heads=1,
+        #         batch_first=True,
+        #         device=device)
         self.attention = MultiHeadAttention(
                 attention_mask,
                 embedding_dims,
