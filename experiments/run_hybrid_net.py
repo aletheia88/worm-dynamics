@@ -11,6 +11,7 @@ def train(
     num_neurons,
     training_dataset,
     model,
+    attention_scheme,
     batch_size,
     num_iterations,
     num_epochs,
@@ -41,9 +42,10 @@ def train(
     # torch.manual_seed(random_seed)
     # np.random.seed(random_seed)
 
-    for n_epoch in tqdm(range(num_epochs)):
+    if attention_scheme in ['BfromN', 'BfromB']:
+        loss_indices = {n: behavior_indices for n in range(batch_size)}
 
-        loss_average = 0
+    for n_epoch in tqdm(range(num_epochs)):
 
         for n_iter, (inputs, _, _, _, _) in tqdm(enumerate(training_dataloader)):
 
@@ -52,32 +54,34 @@ def train(
 
             targets = deepcopy(inputs)
             num_samples = targets.shape[0]
-            # find which neurons are recorded per sample in a batch
-            recorded_neuron_indices = get_recorded_neuron_indices(targets, num_neurons)
-            # mask unrecoreded neuro with zeros
-            mask_indices = get_mask_indices(
-                    num_inputs,
-                    recorded_neuron_indices,
-                    neuron_indices)
 
-            ### only masking out the missing neurons
-            for n in mask_indices.keys():
-                inputs[n, mask_indices[n], :] = 0
+            if attention_scheme in ['NfromN', 'NfromB']:
+                recorded_neuron_indices = get_recorded_neuron_indices(targets, num_neurons)
+                mask_indices = get_mask_indices(
+                        num_inputs,
+                        recorded_neuron_indices,
+                        neuron_indices)
+                # zeroing out the missing neurons
+                for n in mask_indices.keys():
+                    inputs[n, mask_indices[n], :] = 0
 
             optimizer.zero_grad()
             outputs, attention_weights = model(inputs)
 
-            # compute MSE loss for each sample and sum up
+            # compute MSE loss based on attention scheme
+            if attention_scheme in ['NfromN', 'NfromB']:
+                loss_indices = recorded_neuron_indices
+
             loss = aggregate_loss(
                     targets,
                     outputs,
-                    recorded_neuron_indices,
-                    reconstruction_loss)
+                    loss_indices,
+                    reconstruction_loss,
+                    num_samples)
             loss.backward()
             optimizer.step()
-            loss_average += loss.item()
-
-        loss_dict['training'].append(loss_average / num_samples)
+            # log average loss over all samples in the batch per iteration
+            loss_dict['training'].append(loss.item())
 
         with open(f'{log_directory}/losses.json', 'w') as f:
             json.dump(loss_dict, f, indent=4)
@@ -86,13 +90,12 @@ def train(
 
             torch.save(
                 {
-                    'epoch': n_epoch + 1,
+                    'epoch': n_epoch,
                     'state_dict': model.state_dict(),
                     'attention': attention_weights,
                     'optimizer': optimizer.state_dict(),
-                    'training_loss': loss_average / num_samples
                 },
-                    f'{log_directory}/checkpoints/model_ckpt{n_epoch+1}.pt'
+                    f'{log_directory}/checkpoints/model_ckpt{n_epoch}.pt'
             )
 
 
@@ -110,7 +113,6 @@ def get_mask_indices(
 ):
     """ Masking out the missing neurons """
     mask_indices = {}
-
     for n in recorded_neuron_indices.keys():
         mask_indices[n] = list(set(neuron_indices) - set(recorded_neuron_indices[n]))
 
@@ -120,20 +122,18 @@ def get_mask_indices(
 def aggregate_loss(
     targets,
     outputs,
-    recorded_neuron_indices,
-    reconstruction_loss
+    loss_indices,
+    reconstruction_loss,
+    num_samples
 ):
     """ Compute MSE loss for each batch separately on the reconstruction of recorded
     neural and behavioral activities. """
 
-    # both `targets` and `outputs` have shape (batch_size, num_inputs, window_size)
-    batch_size = targets.shape[0]
     loss = 0
-    for n in range(batch_size):
-        loss_indices = recorded_neuron_indices[n]
-        loss += reconstruction_loss(targets[n, loss_indices, :],
-                                    outputs[n, loss_indices, :])
-    return loss
+    for n in range(num_samples):
+        loss += reconstruction_loss(targets[n, loss_indices[n], :],
+                                    outputs[n, loss_indices[n], :])
+    return loss / num_samples
 
 
 def get_recorded_neuron_indices(targets, num_neurons):
@@ -152,10 +152,10 @@ def get_recorded_neuron_indices(targets, num_neurons):
 
 if __name__ == '__main__':
 
-    device = "cuda:3"
+    device = "cuda:2"
     window_size = 400
     window_stride = 1
-    ds_name = 'interneuron_all'
+    ds_name = 'AVA_MC_SMDV'
     batch_size = 32
     base = '/home/alicia/store1/alicia/attention_predict'
 
@@ -167,19 +167,19 @@ if __name__ == '__main__':
         device=device,
         slices=slice(0, 1600)
     )
-    num_iterations = 1000 #1_000_000
-    num_epochs = 10000
+    num_iterations = 1_000_000 #1_000_000
+    num_epochs = 1000
     learning_rate = 1e-4
-    exp_name = 'exp_2024111303'
+    exp_name = 'exp_2024111800'
     log_directory = f'{base}/{exp_name}'
     log_ckpt_freq = 10
     random_seed = 1912 # Alan Turing's birth year :)
 
     depth = 5
-    num_inputs = 14
-    num_neurons = 11
+    num_inputs = 6
+    num_neurons = 3
     num_behaviors = 3
-    attention_scheme = 'NfromN'
+    attention_scheme = 'BfromB'
 
     model = HybridNet(
             depth,
@@ -192,6 +192,7 @@ if __name__ == '__main__':
         num_neurons,
         training_dataset,
         model,
+        attention_scheme,
         batch_size,
         num_iterations,
         num_epochs,
