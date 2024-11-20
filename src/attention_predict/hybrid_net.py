@@ -17,7 +17,7 @@ class HybridNet(torch.nn.Module):
         hidden_dims: int = 512,
         upsample_mode: str = 'nearest',
         final_activation: torch.nn.Module | None = None,
-        attention_scheme: str = 'NfromN',
+        attention_scheme: str = 'all',
         device: str = 'cpu',
     ):
         super().__init__()
@@ -365,6 +365,7 @@ class MultiHeadAttention(torch.nn.Module):
                 embedding_dims,
                 num_inputs,
                 device)
+        # multi-headed self-attention (just an idea)
         # self.heads = torch.nn.ModuleList([Head(
         #         attention_mask,
         #         embedding_dims,
@@ -435,9 +436,12 @@ class AttentionBlock(torch.nn.Module):
 
         attention_quadrants = {
             'nn': torch.eye(N, device=device),
-            'bb': torch.eye(B, device=device),
+            # only allows self-attending
+            'bb': 1 - torch.eye(B, device=device),
             'nb': torch.zeros(N, B, device=device),
-            'bn': torch.zeros(N, B, device=device),
+            # 'bn': torch.zeros(B, N, device=device),
+            # only allows attending to the 'right' neuron
+            'bn': 1 - torch.eye(B, device=device),
         }
         inattention_quadrants = {
             'nn': torch.ones(N, N, device=device),
