@@ -461,7 +461,8 @@ class AttentionBlock(torch.nn.Module):
             'nb': torch.zeros(N, B, device=device),
             # 'bn': torch.zeros(B, N, device=device),
             # only allows attending to the 'right' neuron
-            'bn': 1 - torch.eye(B, device=device),
+            # 'bn': 1 - torch.eye(B, device=device),
+            'bn': torch.zeros(B, N, device=device),
         }
         inattention_quadrants = {
             'nn': torch.ones(N, N, device=device),
