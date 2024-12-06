@@ -321,17 +321,17 @@ class Head(torch.nn.Module):
     def __init__(self, attention_mask, embedding_dims, num_inputs, device):
 
         super().__init__()
-        self.sqrt_dk = embedding_dims**0.5
+        self.sqrt_dk = num_inputs**0.5
         self.attention_mask = attention_mask
 
         self.key_weights = torch.nn.Linear(
-                embedding_dims,
-                embedding_dims,
+                num_inputs,
+                num_inputs,
                 bias=False,
                 device=device)
         self.query_weights = torch.nn.Linear(
-                embedding_dims,
-                embedding_dims,
+                num_inputs,
+                num_inputs,
                 bias=False,
                 device=device)
         self.value_weights = torch.nn.Linear(
@@ -346,9 +346,8 @@ class Head(torch.nn.Module):
         weighted_key = self.key_weights(key)
         weighted_query = self.query_weights(query)
         weighted_value = self.value_weights(value)
-        # most stupid bug: should be '/' not '*' sqrt_dk
-        attention_matrix = weighted_query @ weighted_key.transpose(-2, -1) / \
-                           self.sqrt_dk
+        # attention_matrix shape: (num_samples, num_inputs, num_inputs)
+        attention_matrix = weighted_query @ weighted_key.transpose(-2, -1) / self.sqrt_dk
 
         # apply attention masking
         attention_matrix = attention_matrix.masked_fill(self.attention_mask,
@@ -383,6 +382,8 @@ class MultiHeadAttention(torch.nn.Module):
                 embedding_dims,
                 num_inputs,
                 device)
+        self.key = torch.eye(num_inputs, device=device)
+        self.query = torch.eye(num_inputs, device=device)
         # multi-headed self-attention (just an idea)
         # self.heads = torch.nn.ModuleList([Head(
         #         attention_mask,
@@ -393,7 +394,11 @@ class MultiHeadAttention(torch.nn.Module):
 
     def forward(self, inputs):
         # single-headed self-attention
-        return self.head(key=inputs, query=inputs, value=inputs)
+        num_samples = inputs.shape[0]
+        key = self.key.unsqueeze(0).expand(num_samples, -1, -1)
+        query = self.query.unsqueeze(0).expand(num_samples, -1, -1)
+
+        return self.head(key=key, query=query, value=inputs)
         # multi-headed self-attention
         # return torch.cat([head(
         #         key=inputs,
@@ -454,14 +459,8 @@ class AttentionBlock(torch.nn.Module):
 
         attention_quadrants = {
             'nn': torch.eye(N, device=device),
-            # no constraint
-            'bb': torch.zeros(B, B, device=device),
-            # only allows self-attending
-            # 'bb': 1 - torch.eye(B, device=device),
+            'bb': torch.eye(B, B, device=device),
             'nb': torch.zeros(N, B, device=device),
-            # 'bn': torch.zeros(B, N, device=device),
-            # only allows attending to the 'right' neuron
-            # 'bn': 1 - torch.eye(B, device=device),
             'bn': torch.zeros(B, N, device=device),
         }
         inattention_quadrants = {
