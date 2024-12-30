@@ -1,0 +1,82 @@
+from attention_predict.reconstruct import reconstruct_traces, build_model, build_dataloader
+from tqdm import tqdm
+import numpy as np
+import torch
+
+
+@torch.no_grad()
+def test_model(
+    architecture,
+    attention_scheme,
+    ds_name,
+    model_ckpt,
+    experiment,
+    variables_to_reconstruct,
+    # dictionary organized as {column_index: variable_name}
+    device
+):
+    prj_directory = '/store1/alicia/attention_predict'
+    data_path = f'{prj_directory}/data/{ds_name}.npy'
+    num_datasets, num_inputs, _ = np.load(data_path).shape
+
+    num_neurons = 3
+    behavior_indices = list(variables_to_reconstruct.keys())
+
+    model = build_model(architecture, attention_scheme, device=device)
+    dataloader = build_dataloader(ds_name, device)
+    reconstructed_traces = reconstruct_traces(
+        model,
+        dataloader,
+        model_ckpt,
+        experiment,
+        num_datasets,
+        architecture,
+    )
+    reconstruction_error = {}
+    mse_loss = torch.nn.MSELoss()
+
+    for ds_index in range(num_datasets):
+
+        reconstruction_error[ds_index] = {}
+
+        prediction = torch.tensor(
+            np.concatenate(
+            reconstructed_traces[ds_index]['prediction'],
+            axis=2).squeeze(0)
+        )
+        ground_truth = torch.tensor(
+            np.concatenate(
+            reconstructed_traces[ds_index]['ground_truth'],
+            axis=2).squeeze(0)
+        )
+        attn_weights = reconstructed_traces[ds_index]['attn_weights']
+
+        for i, variable in variables_to_reconstruct.items():
+            target = ground_truth[i, :]
+            output = prediction[i, :]
+            reconstruction_error[ds_index][variable] = mse_loss(target, output).item()
+
+    return reconstruction_error
+
+
+if __name__ == '__main__':
+
+    architecture = 'attention_model_1'
+    attention_scheme = 'BfromN'
+    ds_name = 'AVA_MC_SMDV_norm_eval'
+    model_ckpt = 600
+    experiment = 'exp_2024121100'
+    variables_to_reconstruct = {3: 'velocity', 4: 'pumping', 5: 'head_angle'}
+    device = 'cuda:2'
+
+    reconstruction_error = test_model(
+        architecture,
+        attention_scheme,
+        ds_name,
+        model_ckpt,
+        experiment,
+        variables_to_reconstruct,
+        device
+    )
+    print(reconstruction_error)
+
