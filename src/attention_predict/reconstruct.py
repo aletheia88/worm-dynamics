@@ -1,79 +1,88 @@
 # Script for reconstructing whole animal trace given model checkpoint and
 # testing/validation dataset
-from attention_predict.dataset import CElegansDataset, CElegansDatasetPlus
-from attention_predict.model import PredictModel
+from attention_predict.dataset import CElegansDatasetPlus
+from attention_predict.attention_model import AttentionModel
+from attention_predict.attention_model_2 import AttentionModel2
+from attention_predict.attention_model_3 import AttentionModel3
 from copy import deepcopy
 from tqdm import tqdm
 import numpy as np
 import torch
 
 
-@torch.no_grad()
-def reconstruct_traces(
-        data_path,
-        dataset_path,
-        model,
-        model_ckpt_path,
-        max_length,
-        model_type,
-        window_size,
-        window_stride=1,
-        mask_indices=None,
-        device='cpu'
+def build_model(
+    architecture,
+    attention_scheme,
+    depth=3,
+    num_neurons=3,
+    num_behaviors=3,
+    window_size=400,
+    device='cuda:3'
 ):
-    """ Reconstruct whole time series using the trained model.
+    if architecture == 'attention_model_1':
+        model = AttentionModel(
+            depth,
+            num_neurons,
+            num_behaviors,
+            window_size,
+            attention_scheme=attention_scheme,
+            device=device)
+    elif architecture == 'attention_model_2':
+        model = AttentionModel2(
+            depth,
+            num_neurons,
+            num_behaviors,
+            window_size,
+            attention_scheme=attention_scheme,
+            device=device)
+    elif architecture == 'attention_model_3':
+        model = AttentionModel3(
+            depth,
+            num_neurons,
+            num_behaviors,
+            window_size,
+            attention_scheme=attention_scheme,
+            device=device)
 
-    Args:
-        model_type: 'unet' or 'attention'.
+    return model
 
-    Example:
-        >>> prj_directory = '/home/alicia/notebook/alicia/attention_predict'
-        >>> data_path = f'{prj_directory}/data/AVA_MC_test.npy'
-        >>> dataset_path = f'{prj_directory}/data/AVA_MC_test_ds.npy'
-        >>> device = 'cuda:2'
-        >>> window_size = 50
-        >>> window_stride = 1 # Default is 1
-        >>> batch_size = 1
-        >>> embedding_dims = 1024
-        >>> num_layers = 4
-        >>> max_length = 1600
-        >>> model_ckpt_path = f'{prj_directory}/experiments/exp_20240915/checkpoints/model_ckpt76.pt'
-        >>> model_type = 'attention'
-        >>> # initialize the attention model
-        >>> model = PredictModel(
-        >>>    num_inputs=dataset.num_variables,
-        >>>    input_dims=window_size,
-        >>>    embedding_dims=embedding_dims,
-        >>>    num_layers=num_layers,
-        >>>    residual=True,
-        >>>    normalize=True,
-        >>>    device=device
-        >>> ).to(device)
-        >>> reconstructed_traces = reconstruct_traces(
-        >>>        data_path,
-        >>>        dataset_path,
-        >>>        model,
-        >>>        model_ckpt_path,
-        >>>        max_length,
-        >>>        model_type,
-        >>>        window_size,
-        >>>        window_stride,
-        >>>        device)
-    """
-    num_worms = np.load(data_path).shape[0]
+
+def build_dataloader(ds_name, device):
+
+    prj_directory = '/store1/alicia/attention_predict'
+    data_path = f'{prj_directory}/data/{ds_name}.npy'
+    dataset_path = f'{prj_directory}/data/{ds_name}_ds.npy'
 
     dataset = CElegansDatasetPlus(
         data_path,
         dataset_path,
-        window_stride=window_stride,
-        window_size=window_size,
+        window_stride=400,
+        window_size=400,
         device=device,
         slices=slice(0, 1600)
     )
     dataloader = torch.utils.data.DataLoader(
         dataset,
         batch_size=1,
-        shuffle=False) # shuffle must set to False for trace reconstruction
+        shuffle=False)
+    # shuffle must set to False to reconstruct trace
+
+    return dataloader
+
+
+@torch.no_grad()
+def reconstruct_traces(
+    model,
+    dataloader,
+    ckpt,
+    experiment,
+    num_worms,
+    architecture,
+    num_neurons=3,
+    max_length=1600,
+    window_size=400
+):
+    model_ckpt_path = f'/store1/alicia/attention_predict/{experiment}/checkpoints/model_ckpt{ckpt}.pt'
 
     # load trained model
     checkpoint = torch.load(model_ckpt_path)
@@ -86,45 +95,18 @@ def reconstruct_traces(
     left_slider = 0
     right_slider = 0
 
-    if model_type == 'attention':
-        reconstructed_traces = {
-                worm: {
-                    'ground_truth': [],
-                    'prediction': [],
-                    'attn_weights': [],
-                    'frames': [],
-                    'mse': []
-                } for worm in range(num_worms)
+    reconstructed_traces = {
+        worm_index: { 
+            'dataset': None,
+            **{
+                'ground_truth': [],
+                'prediction': [],
+                'attn_weights': [],
+                'frames': [],
+                'mse': [],
             }
-    elif model_type == 'unet':
-        reconstructed_traces = {
-            worm: { 
-                'dataset': None,
-                **{
-                    mask_index: {
-                        'ground_truth': [],
-                        'prediction': [],
-                        'frames': [],
-                        'mse': [],
-                    } for mask_index in range(num_inputs)
-                }
-            } for worm in range(num_worms)
-        }
-    elif model_type == 'hybrid':
-        reconstructed_traces = {
-            worm: { 
-                'dataset': None,
-                **{
-                    mask_index: {
-                        'ground_truth': [],
-                        'prediction': [],
-                        'attn_weights': [],
-                        'frames': [],
-                        'mse': [],
-                    } for mask_index in range(num_inputs)
-                }
-            } for worm in range(num_worms)
-        }
+        } for worm_index in range(num_worms)
+    }
 
     for i, (inputs, worm, start_frame, end_frame, ds) in tqdm(enumerate(dataloader)):
 
@@ -144,76 +126,38 @@ def reconstruct_traces(
             right_slider = 0
 
         if append:
-            if model_type == 'attention':
-                outputs, weights = model(inputs)
-                loss = reconstruction_loss(inputs, outputs)
 
-                reconstructed_traces[worm_index]['attn_weights'].append(weights.cpu().detach().numpy())
-                reconstructed_traces[worm_index]['ground_truth'].append(inputs.cpu().detach().numpy())
-                reconstructed_traces[worm_index]['prediction'].append(outputs.cpu().detach().numpy())
-                reconstructed_traces[worm_index]['frames'].append((start_frame.item(),
-                                                                   end_frame.item()))
-                reconstructed_traces[worm_index]['mse'].append(loss.item())
+            targets = deepcopy(inputs)
+            outputs, attn_weights = model(inputs)
+            recorded_neuron_indices = get_recorded_neuron_indices(targets,
+                                                                  num_neurons)
+            loss = reconstruction_loss(
+                    targets[:, recorded_neuron_indices, :],
+                    outputs[:, recorded_neuron_indices, :])
 
-            elif model_type == 'unet' or model_type == 'hybrid':
-
-                targets = deepcopy(inputs)
-
-                if mask_indices is None:
-
-                    # reconstruct after masking out each kind of activity
-                    for mask_index in range(num_inputs):
-
-                        inputs[:, mask_index, :] = 0
-                        outputs = model(inputs)
-                        loss = reconstruction_loss(
-                                targets[:, mask_index, :],
-                                outputs[:, mask_index, :])
-
-                        mask_outcomes = reconstructed_traces[worm_index][mask_index]
-                        mask_outcomes['ground_truth'].append(targets.cpu().detach().numpy())
-                        mask_outcomes['prediction'].append(outputs.cpu().detach().numpy())
-                        mask_outcomes['frames'].append((start_frame.item(),
-                                                        end_frame.item()))
-                        mask_outcomes['mse'].append(loss.item())
-                        # set to original inputs to mask new column
-                        inputs = deepcopy(targets)
-
-                elif len(mask_indices) > 0:
-
-                    # mask out more than one column at once
-                    inputs[:, mask_indices, :] = 0
-                    # Replace unmasked data with random noise
-                    # unmask_indices = list(set(list(range(num_inputs))) -
-                    #                       set(mask_indices))
-                    # noise = torch.randn(inputs[:, unmask_indices, :].shape).to(device)
-                    # inputs[:, unmask_indices, :] = noise
-                    if model_type == 'unet':
-                        outputs = model(inputs)
-                    elif model_type == 'hybrid':
-                        outputs, attn_weights = model(inputs)
-                    # keep the outcome of applying masking in the first item
-                    mask_outcomes = reconstructed_traces[worm_index][0]
-                    mask_outcomes['ground_truth'].append(targets.cpu().detach().numpy())
-                    mask_outcomes['prediction'].append(outputs.cpu().detach().numpy())
-                    mask_outcomes['frames'].append((start_frame.item(),
-                                                    end_frame.item()))
-                    # compute MSE loss for each column reconstruction
-                    for i in range(num_inputs):
-                        loss = reconstruction_loss(targets[:, i, :], outputs[:, i, :])
-                        reconstructed_traces[worm_index][i]['mse'].append(loss.item())
-
-        elif (not append and model_type == 'hybrid' and len(mask_indices) > 0):
-
-            inputs[:, mask_indices, :] = 0
-            _, attn_weights = model(inputs)
-            mask_outcomes = reconstructed_traces[worm_index][0]
-            mask_outcomes['attn_weights'].append(attn_weights.cpu().detach().numpy())
+            mask_outcomes = reconstructed_traces[worm_index]
+            mask_outcomes['ground_truth'].append(targets.cpu().detach().numpy())
+            mask_outcomes['prediction'].append(outputs.cpu().detach().numpy())
+            mask_outcomes['frames'].append((start_frame.item(),
+                                            end_frame.item()))
+            mask_outcomes['mse'].append(loss.item())
+            if architecture in ['attention_model_1', 'attention_model_2']:
+                mask_outcomes['attn_weights'].append(attn_weights.cpu().detach().numpy())
+            elif architecture == 'attention_model_3':
+                mask_outcomes['attn_weights'].append(
+                    [attn.cpu().detach().numpy() for attn in attn_weights]
+                )
 
     for i in range(num_worms):
-        if model_type == 'attention':
-            print(f"\n All frames added to worm{i}: {reconstructed_traces[i]['frames']}")
-        elif model_type == 'unet' or model_type == 'hybrid':
-            print(f"\n All frames added to worm{i}: {reconstructed_traces[i][0]['frames']}")
+        print(f"\n All frames added to worm{i}: {reconstructed_traces[i]['frames']}")
 
     return reconstructed_traces
+
+
+def get_recorded_neuron_indices(targets, num_neurons):
+
+    return [
+        i for i in range(num_neurons)
+        if (torch.max(targets[0, i, :]).item() != -10
+        and torch.min(targets[0, i, :]).item() != -10)
+    ]
