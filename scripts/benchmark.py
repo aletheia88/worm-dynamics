@@ -26,123 +26,106 @@ def rank_contributors(reconstruction, attention_scheme, N):
 
     baseline_attn = 1 / attn_matrix.shape[1]
     normalized_attn_matrix = (attn_matrix - baseline_attn) / baseline_attn
-    contribution_rank = {i: np.argsort(attn_matrix[i])[::-1] for i in range(N)}
+    contribution_rank = {i: N + np.argsort(attn_matrix[i])[::-1] for i in range(N)}
 
     return contribution_rank
 
 
-def benchmark_NfromB(
+def load_model_weights(model, experiment, model_ckpt):
+
+    model_ckpt_path = f'/store1/alicia/attention_predict/{experiment}/checkpoints/model_ckpt{model_ckpt}.pt'
+    checkpoint = torch.load(model_ckpt_path)
+    model.load_state_dict(checkpoint['state_dict'])
+    model.eval()
+
+    return model
+
+
+def evaluate_Ns():
+    # for each neuron, we compute mse_per_neuron
+    # mse_per_neuron = {
+    #     0: {
+    #         'v1': [mse_1, mse_1, mse_1, mse_1], # 4 windows therefore 4 mse_1
+    #         'v2': [mse_2, mse_2, mse_2, mse_2],
+    #         ...,
+    #         'v1-v2-..-vk': [mse_k, mse_k, mse_k, mse_k]
+    #     },
+    #     ...
+    #     n: {
+    #         'v1': [mse_1, mse_1, mse_1, mse_1]
+    #         'v2': [mse_2, mse_2, mse_2, mse_2]
+    #         ...,
+    #         'v1-v2-..-vk': [mse_k, mse_k, mse_k, mse_k]
+    #     }
+    # }
+    # then we recorgnize mse_per_neuron into the following
+    # {
+    #     'v1': [total_mse_11, total_mse_12, ..., total_mse_1n],
+    #     'v2': [total_mse_11, total_mse_12, ..., total_mse_1n],
+    #     ...,
+    #     'v1-v2-..-vk': [total_mse_11, total_mse_12, ..., total_mse_1n],
+    # }
+
+    # reconstruction_loss = torch.nn.MSELoss()
+    # all_indices = list(range(num_neurons + num_behaviors))
+    # dataset = dataloader.dataset
+    # num_windows = max_length // window_size
+    pass
+
+
+@torch.no_grad()
+def evaluate_N_from_Bs(
     num_top_contributors,
     contribution_rank,
-    experiment,
-    model_ckpt,
-    model,
-    num_worms,
+    num_windows,
     num_neurons,
-    num_behaviors,
-    dataloader,
+    model,
+    dataset,
+    all_indices,
+    worm_index,
+    neuron_index,
+    reconstruction_loss,
 ):
+    end_frame_index = (worm_index + 1) * num_windows - 1
+    start_frame_index = end_frame_index - 3
+    # check if given neuron_index is recorded in dataset worm_index
+    recorded_neuron_indices = get_recorded_neuron_indices(
+        dataset[start_frame_index][0].unsqueeze(0),
+        num_neurons
+    )
+    if neuron_index not in recorded_neuron_indices:
+        return False
 
     neuron_from_behaviors = {
         neuron_index: behaviors[:num_top_contributors]
         for neuron_index, behaviors in contribution_rank.items()
     }
-    num_neurons = len(neuron_from_behaviors)
+    behavior_indices = neuron_from_behaviors[neuron_index]
+    contexts = establish_contexts(behavior_indices)
 
-    ckpt_path = f'/store1/alicia/attention_predict/{experiment}/checkpoints/model_ckpt{model_ckpt}.pt'
-    # load trained model
-    checkpoint = torch.load(ckpt_path)
-    model.load_state_dict(checkpoint['state_dict'])
-    model.eval()
+    reconstruction_mse = {}
 
-    reconstruction_loss = torch.nn.MSELoss()
+    for context_id, context_indices in contexts.items():
 
-    left_slider = 0
-    right_slider = 0
-    max_length = 1600
-    window_size = 400
-    all_behavior_indices = list(range(num_neurons, num_neurons + num_behaviors))
+        reconstruction_mse[context_id] = []
+        ignore_indices = list(set(all_indices) - set(context_indices))
 
-    mse_per_neuron = {
-        worm_index: {} for worm_index in range(num_worms)
-    }
-    mse_all_neurons = {
-        neuron_index: {} for neuron_index in range(num_neurons)
-    }
-    # for each neuron, we compute mse_per_neuron
-    # mse_per_neuron = {
-    #     0: {
-    #         'v1': mse_1,
-    #         'v2': mse_2,
-    #         ...,
-    #         'v1-v2-..-vk': mse_k
-    #     },
-    #     ...
-    #     n: {
-    #         'v1': mse_1,
-    #         'v2': mse_2,
-    #         ...,
-    #         'v1-v2-..-vk': mse_k
-    #     }
-    # }
-    # then we recorgnize mse_per_neuron into the following
-    # {
-    #     'v1': [mse_11, mse_12, ..., mse_1n],
-    #     'v2': [mse_11, mse_12, ..., mse_1n],
-    #     ...,
-    #     'v1-v2-..-vk': [mse_11, mse_12, ..., mse_1n],
-    # }
+        for window_index in range(start_frame_index, end_frame_index + 1):
 
-    for i, (inputs, worm, start_frame, end_frame, ds) in tqdm(enumerate(dataloader)):
-
-        print(f'\n=====worm: {worm.item()}=====\n')
-
-        append = False
-        worm_index = worm.item()
-
-        if start_frame.item() == right_slider:
-            append = True
-            left_slider = right_slider
-            right_slider = left_slider + window_size
-
-        if start_frame.item() == max_length - window_size:
-            append = True
-            # reset the slider positions to append data from next worm
-            left_slider = 0
-            right_slider = 0
-
-        if append:
-
+            inputs = dataset[window_index][0].unsqueeze(0)
             targets = deepcopy(inputs)
-            recorded_neuron_indices = get_recorded_neuron_indices(targets, num_neurons)
+            # set all indices except context_indices to 0 (mean activity)
+            inputs[:, ignore_indices, :] = 0
+            outputs, _ = model(inputs)
+            loss = reconstruction_loss(
+                targets[:, neuron_index, :],
+                outputs[:, neuron_index, :]
+            ).item()
+            reconstruction_mse[context_id].append(loss)
 
-            for neuron_index, behavior_indices in neuron_from_behaviors.items():
+        reconstruction_mse[context_id] = np.sum(reconstruction_mse[context_id])
 
-                # inputs: (num_samples=1, num_inputs, window_size)
-                # behavior_indices = [index0, index1, index2, ...]
-                # inputs contain [index0], [index0, index1], [index0, index1, index2]
-
-                if neuron_index in recorded_neuron_indices:
-
-                    contexts = establish_contexts(behavior_indices)
-                    for context_id, context_indices in contexts.items():
-
-                        # set all indices except context_indices to -10
-                        ignore_indices = list(set(all_behavior_indices) -
-                                              set(context_indices))
-                        # TODO: different contexts give rise to the same loss
-                        inputs[:, ignore_indices, :] = -1
-                        outputs, _ = model(inputs)
-                        loss = reconstruction_loss(
-                            targets[:, neuron_index, :],
-                            outputs[:, neuron_index, :]
-                        )
-
-                        mse_per_neuron[worm_index][context_id] = loss.item()
-
-                    if neuron_index == 7 or neuron_index == 8:
-                        print(f'mse of neuron {neuron_index}: {mse_per_neuron}')
-                        # mse_all_neurons[neuron_index] = reformat(mse_per_neuron)
+    return reconstruction_mse
 
 
 def get_recorded_neuron_indices(targets, num_neurons):
@@ -175,17 +158,6 @@ def establish_contexts(variable_indices):
     return contexts
 
 
-def reformat(mse_per_neuron):
-    # mse_per_neuron -> target dictionary:
-    # {
-    #     'v1': [mse_11, mse_12, ..., mse_1n],
-    #     'v2': [mse_11, mse_12, ..., mse_1n],
-    #     ...,
-    #     'v1-v2-..-vk': [mse_11, mse_12, ..., mse_1n],
-    # }
-    pass
-
-
 def main():
 
     architecture = 'attention_model_2'
@@ -206,6 +178,7 @@ def main():
         device=device
     )
     dataloader = build_dataloader(ds_name, device)
+    # model weights loaded inside the function reconstruct_traces
     reconstruction = reconstruct_traces(
         model,
         dataloader,
@@ -220,19 +193,28 @@ def main():
         attention_scheme,
         num_neurons
     )
+    model = load_model_weights(model, experiment, model_ckpt)
     num_top_contributors = 3
-    benchmark_NfromB(
+    num_windows = 4
+    dataset = dataloader.dataset
+    all_indices = list(range(num_neurons + num_behaviors))
+    worm_index = 17
+    neuron_index = 7
+    reconstruction_loss = torch.nn.MSELoss()
+
+    reconstruction_mse = evaluate_N_from_Bs(
         num_top_contributors,
         contribution_rank,
-        experiment,
-        model_ckpt,
-        model,
-        num_worms,
+        num_windows,
         num_neurons,
-        num_behaviors,
-        dataloader,
+        model,
+        dataset,
+        all_indices,
+        worm_index,
+        neuron_index,
+        reconstruction_loss,
     )
-
+    print(reconstruction_mse)
 
 if __name__ == '__main__':
     main()
