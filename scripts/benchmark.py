@@ -152,6 +152,106 @@ def evaluate_N_from_Bs(
     return reconstruction_mse
 
 
+@torch.no_grad()
+def build_B_from_Ns(
+    num_top_contributors,
+    contribution_rank,
+    num_windows,
+    num_neurons,
+    model,
+    dataset,
+    all_indices,
+    worm_index,
+    behavior_index,
+    reconstruction_loss,
+):
+    end_frame_index = (worm_index + 1) * num_windows - 1
+    start_frame_index = end_frame_index - 3
+
+    recorded_neuron_indices = get_recorded_neuron_indices(
+        dataset[start_frame_index][0].unsqueeze(0),
+        num_neurons
+    )
+
+    behavior_from_neurons = {
+        behavior_index: neurons[:num_top_contributors]
+        for behavior_index, neurons in contribution_rank.items()
+    }
+    neuron_indices = behavior_from_neurons[behavior_index]
+    contexts = establish_contexts(neuron_indices)
+
+    reconstruction_mse = {}
+
+    for context_id, context_indices in contexts.items():
+
+        reconstruction_mse[context_id] = []
+
+        # check if context_indices contain neurons that are not recorded
+        if not all(num in recorded_neuron_indices for num in context_indices):
+            continue
+
+        ignore_indices = list(set(all_indices) - set(context_indices))
+
+        for window_index in range(start_frame_index, end_frame_index + 1):
+
+            inputs = dataset[window_index][0].unsqueeze(0)
+            targets = deepcopy(inputs)
+            # set all indices except context_indices to 0 (mean activity)
+            inputs[:, ignore_indices, :] = 0
+            outputs, _ = model(inputs)
+            loss = reconstruction_loss(
+                targets[:, behavior_index, :],
+                outputs[:, behavior_index, :]
+            ).item()
+            reconstruction_mse[context_id].append(loss)
+
+        reconstruction_mse[context_id] = np.sum(reconstruction_mse[context_id])
+
+    return reconstruction_mse
+
+
+def rank_contributors(reconstruction, attention_scheme, N, B):
+    # N = num_neurons
+    if attention_scheme == 'NfromB':
+        attn_matrix = reconstruction[0]['attn_weights'][0][0, :N, N:]
+    elif attention_scheme == 'BfromN':
+        attn_matrix = reconstruction[0]['attn_weights'][0][0, N:, :N]
+    elif attention_scheme == 'NfromN':
+        attn_matrix = reconstruction[0]['attn_weights'][0][0, :N, :N]
+
+    baseline_attn = 1 / attn_matrix.shape[1]
+    normalized_attn_matrix = (attn_matrix - baseline_attn) / baseline_attn
+
+    if attention_scheme == 'NfromB':
+        contribution_rank = {i: N + np.argsort(attn_matrix[i])[::-1] for i in range(N)}
+    elif attention_scheme == 'BfromN':
+        contribution_rank = {N + i: np.argsort(attn_matrix[i])[::-1] for i in range(B)}
+    elif attention_scheme == 'NfromN':
+        contribution_rank = {i: np.argsort(attn_matrix[i])[::-1] for i in range(N)}
+
+    return contribution_rank
+
+
+def load_model_weights(model, experiment, model_ckpt):
+
+    model_ckpt_path = f'/store1/alicia/attention_predict/{experiment}/checkpoints/model_ckpt{model_ckpt}.pt'
+    checkpoint = torch.load(model_ckpt_path)
+    model.load_state_dict(checkpoint['state_dict'])
+    model.eval()
+
+    return model
+
+
+def create_context_ids(num_top_contributors):
+
+    context_ids = [f"v{i}" for i in range(1, num_top_contributors + 1)]
+    combinations = ["-".join([f"v{j}" for j in range(1, i + 1)])
+                    for i in range(2, num_top_contributors + 1)]
+    context_ids.extend(combinations)
+
+    return context_ids
+
+
 def get_recorded_neuron_indices(targets, num_neurons):
 
     return [
