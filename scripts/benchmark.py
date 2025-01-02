@@ -1,18 +1,18 @@
-from attention_predict.attention_model import AttentionModel
-from attention_predict.attention_model_2 import AttentionModel2
-from attention_predict.attention_model_3 import AttentionModel3
 from attention_predict.dataset import CElegansDatasetPlus
 from attention_predict.reconstruct import reconstruct_traces, build_model, build_dataloader
 from copy import deepcopy
 from tqdm import tqdm
+import json
 import numpy as np
 import torch
 
-# get attention matrix and normalize according to the baseline
-# for each row, rank the attention scores of each behavior from high to low
-# get the top 5 behaviors (and their column indices) with the highest attention score
-# delete each behavior from inputs and get model outputs
-# compute MSE which contributes a dot on the final violin plot
+
+# Approach to evaluate model
+# 1. get attention matrix and normalize according to the baseline
+# 2. for each row, rank the attention scores of each behavior from high to low
+# 3. get the top k behaviors (and their column indices) with the highest attention score
+# 4. delete each behavior from inputs and get model outputs
+# 5. compute MSE which contributes a dot on the final violin plot
 
 
 def rank_contributors(reconstruction, attention_scheme, N):
@@ -41,36 +41,60 @@ def load_model_weights(model, experiment, model_ckpt):
     return model
 
 
-def evaluate_Ns():
-    # for each neuron, we compute mse_per_neuron
-    # mse_per_neuron = {
-    #     0: {
-    #         'v1': [mse_1, mse_1, mse_1, mse_1], # 4 windows therefore 4 mse_1
-    #         'v2': [mse_2, mse_2, mse_2, mse_2],
-    #         ...,
-    #         'v1-v2-..-vk': [mse_k, mse_k, mse_k, mse_k]
-    #     },
-    #     ...
-    #     n: {
-    #         'v1': [mse_1, mse_1, mse_1, mse_1]
-    #         'v2': [mse_2, mse_2, mse_2, mse_2]
-    #         ...,
-    #         'v1-v2-..-vk': [mse_k, mse_k, mse_k, mse_k]
-    #     }
-    # }
-    # then we recorgnize mse_per_neuron into the following
-    # {
-    #     'v1': [total_mse_11, total_mse_12, ..., total_mse_1n],
-    #     'v2': [total_mse_11, total_mse_12, ..., total_mse_1n],
-    #     ...,
-    #     'v1-v2-..-vk': [total_mse_11, total_mse_12, ..., total_mse_1n],
-    # }
+def create_context_ids(num_top_contributors):
 
-    # reconstruction_loss = torch.nn.MSELoss()
-    # all_indices = list(range(num_neurons + num_behaviors))
-    # dataset = dataloader.dataset
-    # num_windows = max_length // window_size
-    pass
+    context_ids = [f"v{i}" for i in range(1, num_top_contributors + 1)]
+    combinations = ["-".join([f"v{j}" for j in range(1, i + 1)])
+                    for i in range(2, num_top_contributors + 1)]
+    context_ids.extend(combinations)
+
+    return context_ids
+
+
+def evaluate_Ns(
+    num_neurons,
+    num_behaviors,
+    num_worms,
+    dataloader,
+    num_top_contributors,
+    contribution_rank,
+    model,
+):
+    max_length = 1600
+    window_size = 400
+    num_windows = max_length // window_size
+
+    reconstruction_loss = torch.nn.MSELoss()
+    all_indices = list(range(num_neurons + num_behaviors))
+    dataset = dataloader.dataset
+
+    evaluation = {}
+    context_ids = create_context_ids(num_top_contributors)
+
+    for neuron_index in tqdm(range(num_neurons)):
+
+        evaluation[neuron_index] = {context_id: [] for context_id in context_ids}
+
+        for worm_index in range(num_worms):
+
+            reconstruction_mse = evaluate_N_from_Bs(
+                num_top_contributors,
+                contribution_rank,
+                num_windows,
+                num_neurons,
+                model,
+                dataset,
+                all_indices,
+                worm_index,
+                neuron_index,
+                reconstruction_loss,
+            )
+            # if this worm dataset has neuron_index recorded
+            if reconstruction_mse:
+                for context_id, mse in reconstruction_mse.items():
+                    evaluation[neuron_index][context_id].append(mse)
+
+    return evaluation
 
 
 @torch.no_grad()
@@ -194,27 +218,20 @@ def main():
         num_neurons
     )
     model = load_model_weights(model, experiment, model_ckpt)
-    num_top_contributors = 3
-    num_windows = 4
-    dataset = dataloader.dataset
-    all_indices = list(range(num_neurons + num_behaviors))
-    worm_index = 17
-    neuron_index = 7
-    reconstruction_loss = torch.nn.MSELoss()
-
-    reconstruction_mse = evaluate_N_from_Bs(
+    num_top_contributors = 10
+    evaluation = evaluate_Ns(
+        num_neurons,
+        num_behaviors,
+        num_worms,
+        dataloader,
         num_top_contributors,
         contribution_rank,
-        num_windows,
-        num_neurons,
         model,
-        dataset,
-        all_indices,
-        worm_index,
-        neuron_index,
-        reconstruction_loss,
     )
-    print(reconstruction_mse)
+    result_path = f'/store1/alicia/attention_predict/{experiment}'
+    with open(f'{result_path}/evaluation_ckpt{model_ckpt}_k{num_top_contributors}.json', 'w') as json_file:
+        json.dump(evaluation, json_file, indent=4)
+    print(f'evaluation results written under {result_path}')
 
 if __name__ == '__main__':
     main()
