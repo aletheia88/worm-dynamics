@@ -39,9 +39,13 @@ def evaluate_signal_mixing(
         variable_indices = list(range(num_neurons, num_neurons + num_behaviors))
         mix_signals = build_B_from_Ns
 
-    elif attention_scheme == 'NfromB' or attention_scheme == 'NfromN':
+    elif attention_scheme == 'NfromB':
         variable_indices = list(range(num_neurons))
         mix_signals = build_N_from_Bs
+
+    elif attention_scheme == 'NfromN':
+        variable_indices = list(range(num_neurons))
+        mix_signals = build_N_from_Ns
 
     for variable_index in tqdm(variable_indices):
 
@@ -175,6 +179,65 @@ def build_B_from_Ns(
             loss = reconstruction_loss(
                 targets[:, behavior_index, :],
                 outputs[:, behavior_index, :]
+            ).item()
+            reconstruction_mse[context_id].append(loss)
+
+        reconstruction_mse[context_id] = np.sum(reconstruction_mse[context_id])
+
+    return reconstruction_mse
+
+
+@torch.no_grad()
+def build_N_from_Ns(
+    num_top_contributors,
+    contribution_rank,
+    num_windows,
+    num_neurons,
+    model,
+    dataset,
+    all_indices,
+    worm_index,
+    neuron_index,
+    reconstruction_loss,
+):
+    end_frame_index = (worm_index + 1) * num_windows - 1
+    start_frame_index = end_frame_index - 3
+
+    recorded_neuron_indices = get_recorded_neuron_indices(
+        dataset[start_frame_index][0].unsqueeze(0),
+        num_neurons
+    )
+    if neuron_index not in recorded_neuron_indices:
+        return False
+
+    neuron_from_neurons = {
+        neuron_index: neurons[:num_top_contributors]
+        for neuron_index, neurons in contribution_rank.items()
+    }
+    neuron_indices = neuron_from_neurons[neuron_index]
+    contexts = establish_contexts(neuron_indices)
+
+    reconstruction_mse = {}
+    for context_id, context_indices in contexts.items():
+
+        reconstruction_mse[context_id] = []
+
+        # check if context_indices contain neurons that are not recorded
+        if not all(num in recorded_neuron_indices for num in context_indices):
+            continue
+
+        ignore_indices = list(set(all_indices) - set(context_indices))
+
+        for window_index in range(start_frame_index, end_frame_index + 1):
+
+            inputs = dataset[window_index][0].unsqueeze(0)
+            targets = deepcopy(inputs)
+            # set all indices except context_indices to 0 (mean activity)
+            inputs[:, ignore_indices, :] = 0
+            outputs, _ = model(inputs)
+            loss = reconstruction_loss(
+                targets[:, neuron_index, :],
+                outputs[:, neuron_index, :]
             ).item()
             reconstruction_mse[context_id].append(loss)
 
