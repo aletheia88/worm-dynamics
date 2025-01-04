@@ -259,11 +259,11 @@ def rank_contributors(reconstruction, attention_scheme, N, B):
     normalized_attn_matrix = (attn_matrix - baseline_attn) / baseline_attn
 
     if attention_scheme == 'NfromB':
-        contribution_rank = {i: N + np.argsort(attn_matrix[i])[::-1] for i in range(N)}
+        contribution_rank = {i: N + np.argsort(normalized_attn_matrix[i])[::-1] for i in range(N)}
     elif attention_scheme == 'BfromN':
-        contribution_rank = {N + i: np.argsort(attn_matrix[i])[::-1] for i in range(B)}
+        contribution_rank = {N + i: np.argsort(normalized_attn_matrix[i])[::-1] for i in range(B)}
     elif attention_scheme == 'NfromN':
-        contribution_rank = {i: np.argsort(attn_matrix[i])[::-1] for i in range(N)}
+        contribution_rank = {i: np.argsort(normalized_attn_matrix[i])[::-1] for i in range(N)}
 
     return contribution_rank
 
