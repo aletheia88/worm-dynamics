@@ -318,6 +318,60 @@ def establish_contexts(variable_indices):
     return contexts
 
 
+def print_contexts(num_top_contributors):
+
+    architecture = 'attention_model_2'
+    attention_scheme = 'BfromN'
+    ds_name = 'steve1230_norm_eval'
+    device = 'cuda:2'
+    model_ckpt = 2000
+    experiment = 'exp_2024122400'
+    num_neurons = 14
+    num_behaviors = 34
+    num_worms = 20
+
+    model = build_model(
+        architecture,
+        attention_scheme,
+        num_neurons=num_neurons,
+        num_behaviors=num_behaviors,
+        device=device
+    )
+    dataloader = build_dataloader(ds_name, device)
+    # model weights loaded inside the function reconstruct_traces
+    reconstruction = reconstruct_traces(
+        model,
+        dataloader,
+        model_ckpt,
+        experiment,
+        num_worms,
+        architecture,
+        num_neurons=num_neurons
+    )
+    contribution_rank = rank_contributors(
+        reconstruction,
+        attention_scheme,
+        num_neurons,
+        num_behaviors
+    )
+    neurons = ['SMDD', 'SAADL', 'SAADR', 'SAAV', 'M3', 'M4', 'MI', 'AVB', 'RIB',
+            'RME', 'RMEV', 'RMED', 'URYD', 'URYV']
+    behaviors = ['velocity', 'pumping', 'head-angle']
+    num_body_angles = 30
+    behaviors += [f'body-angle-{i}' for i in range(1, num_body_angles+1)]
+    behaviors += ['heat-stim']
+    variables = neurons + behaviors
+
+    contexts = {
+        variables[variable_index]: [
+            variables[rank_index]
+            for rank_index in rank_indices[:num_top_contributors]
+        ]
+        for variable_index, rank_indices in contribution_rank.items()
+    }
+    print(f'Top {num_top_contributors} contributors: {contexts}')
+
+
 def main():
 
     architecture = 'attention_model_2'
@@ -356,7 +410,25 @@ def main():
     )
     model = load_model_weights(model, experiment, model_ckpt)
     num_top_contributors = 3
+    # num_windows = 4
+    # worm_index = 17
+    # neuron_index = 7
+    # dataset = dataloader.dataset
+    # all_indices = list(range(num_neurons + num_behaviors))
+    # reconstruction_loss = torch.nn.MSELoss()
 
+    # reconstruction_mse = build_N_from_Ns(
+    #     num_top_contributors,
+    #     contribution_rank,
+    #     num_windows,
+    #     num_neurons,
+    #     model,
+    #     dataset,
+    #     all_indices,
+    #     worm_index,
+    #     neuron_index,
+    #     reconstruction_loss,
+    # )
     evaluation = evaluate_signal_mixing(
         num_neurons,
         num_behaviors,
