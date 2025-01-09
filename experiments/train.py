@@ -139,8 +139,8 @@ def get_recorded_neuron_indices(targets, num_neurons):
     for n in range(batch_size):
         recorded_neuron_indices[n] = [
             i for i in range(num_neurons)
-            if (torch.max(targets[n, i, :]).item() != 0
-            and torch.min(targets[n, i, :]).item() != 0)
+            if (torch.max(targets[n, i, :]).item() != -10
+            and torch.min(targets[n, i, :]).item() != -10)
         ]
     return recorded_neuron_indices
 
