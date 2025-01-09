@@ -1,4 +1,6 @@
 from attention_predict.dataset import CElegansDatasetPlus
+from attention_predict.attention_model_3 import AttentionModel3
+from attention_predict.attention_model_2 import AttentionModel2
 from attention_predict.attention_model import AttentionModel
 from copy import deepcopy
 from tqdm import tqdm
@@ -30,7 +32,7 @@ def train(
         shuffle=True)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    reconstruction_loss = torch.nn.MSELoss()
+    mse_loss = torch.nn.MSELoss()
 
     loss_dict = {'training': [], 'validation': []}
     num_inputs = next(iter(training_dataloader))[0].shape[1]
@@ -43,7 +45,7 @@ def train(
     # np.random.seed(random_seed)
 
     if attention_scheme in ['BfromN', 'BfromB']:
-        loss_indices = {n: behavior_indices for n in range(batch_size)}
+        loss_indices = behavior_indices
 
     for n_epoch in tqdm(range(num_epochs)):
 
@@ -56,31 +58,22 @@ def train(
             num_samples = targets.shape[0]
 
             if attention_scheme in ['NfromN', 'NfromB']:
-                recorded_neuron_indices = get_recorded_neuron_indices(targets, num_neurons)
-                mask_indices = get_mask_indices(
-                        num_inputs,
-                        recorded_neuron_indices,
-                        neuron_indices)
-                # zeroing out the missing neurons
-                for n in mask_indices.keys():
-                    inputs[n, mask_indices[n], :] = 0
+                loss_indices = get_recorded_neuron_indices(targets, num_neurons)
 
             optimizer.zero_grad()
             outputs, attention_weights = model(inputs)
-
-            # compute MSE loss based on attention scheme
-            if attention_scheme in ['NfromN', 'NfromB']:
-                loss_indices = recorded_neuron_indices
-
             loss = aggregate_loss(
                     targets,
                     outputs,
                     loss_indices,
-                    reconstruction_loss,
-                    num_samples)
+                    mse_loss,
+                    num_samples,
+                    attention_scheme,
+                    num_neurons,
+            )
             loss.backward()
             # add gradient clipping
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
             # log average loss over all samples in the batch per iteration
             loss_dict['training'].append(loss.item())
