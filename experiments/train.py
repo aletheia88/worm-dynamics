@@ -101,34 +101,38 @@ def ensure_dir_exists(directories):
             os.makedirs(directory)
 
 
-def get_mask_indices(
-    num_inputs,
-    recorded_neuron_indices,
-    neuron_indices,
-):
-    """ Masking out the missing neurons """
-    mask_indices = {}
-    for n in recorded_neuron_indices.keys():
-        mask_indices[n] = list(set(neuron_indices) - set(recorded_neuron_indices[n]))
-
-    return mask_indices
-
-
 def aggregate_loss(
     targets,
     outputs,
     loss_indices,
-    reconstruction_loss,
-    num_samples
+    mse_loss,
+    num_samples,
+    attention_scheme,
+    num_neurons,
 ):
     """ Compute MSE loss for each batch separately on the reconstruction of recorded
     neural and behavioral activities. """
 
     loss = 0
-    for n in range(num_samples):
-        loss += reconstruction_loss(targets[n, loss_indices[n], :],
-                                    outputs[n, loss_indices[n], :])
-    return loss / num_samples
+    if attention_scheme in ['NfromN', 'NfromB']:
+        for n in range(num_samples):
+            for neuron_index in loss_indices[n]:
+                loss += mse_loss(
+                    targets[n, neuron_index, :],
+                    outputs[n, neuron_index, :]
+                )
+    elif attention_scheme in ['BfromN', 'BfromB']:
+        for behavior_index in loss_indices[:3]:
+            loss += mse_loss(
+                    targets[:, behavior_index, :],
+                    outputs[:, behavior_index, :]
+            )
+        loss += mse_loss(
+            targets[:, num_neurons+3:-1, :],
+            outputs[:, num_neurons+3:-1, :]
+        )
+
+    return loss
 
 
 def get_recorded_neuron_indices(targets, num_neurons):
@@ -150,7 +154,7 @@ if __name__ == '__main__':
     device = "cuda:2"
     window_size = 400
     window_stride = 1
-    ds_name = 'AVA_MC_SMDV'
+    ds_name = 'data0108_norm'
     batch_size = 32
     base = '/home/alicia/store1/alicia/attention_predict'
 
@@ -163,26 +167,27 @@ if __name__ == '__main__':
         slices=slice(0, 1600)
     )
     num_iterations = 1_000_000 #1_000_000
-    num_epochs = 1000
+    num_epochs = 2001
     learning_rate = 1e-5
-    exp_name = 'exp_2024112201'
+    exp_name = 'exp_2025010801'
     log_directory = f'{base}/{exp_name}'
     log_ckpt_freq = 10
     random_seed = 1912 # Alan Turing's birth year :)
 
     depth = 3
-    num_inputs = 6
-    num_neurons = 3
-    num_behaviors = 3
-    attention_scheme = 'BfromN'
+    num_inputs = 51
+    num_neurons = 17
+    num_behaviors = 34 # 3 (cepnem beh) + 30 (body angles) + 1 (heat-stim)
+    attention_scheme = 'NfromB'
 
-    model = AttentionModel(
-            depth,
-            num_neurons,
-            num_behaviors,
-            window_size,
-            attention_scheme=attention_scheme,
-            device=device)
+    model = AttentionModel2(
+        depth,
+        num_neurons,
+        num_behaviors,
+        window_size,
+        attention_scheme=attention_scheme,
+        device=device
+    )
     train(
         num_neurons,
         training_dataset,
@@ -194,5 +199,6 @@ if __name__ == '__main__':
         learning_rate,
         random_seed,
         log_directory,
-        log_ckpt_freq)
+        log_ckpt_freq
+    )
 
