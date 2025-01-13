@@ -32,7 +32,7 @@ def train(
         shuffle=True)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    mse_loss = torch.nn.MSELoss()
+    mse_loss = torch.nn.MSELoss(reduction='sum')
 
     loss_dict = {'training': [], 'validation': []}
     num_inputs = next(iter(training_dataloader))[0].shape[1]
@@ -58,8 +58,11 @@ def train(
             num_samples = targets.shape[0]
 
             if attention_scheme in ['NfromN', 'NfromB']:
-                recorded_neuron_indices = get_recorded_neuron_indices(targets, num_neurons,
-                                                           num_samples)
+                recorded_neuron_indices = get_recorded_neuron_indices(
+                    targets,
+                    num_neurons,
+                    num_samples
+                )
                 # randomly drop one recorded neuron
                 loss_indices = drop_neuron(recorded_neuron_indices, num_samples, 1)
 
@@ -119,23 +122,22 @@ def aggregate_loss(
     loss = 0
     if attention_scheme in ['NfromN', 'NfromB']:
         for n in range(num_samples):
-            for neuron_index in loss_indices[n]:
-                loss += mse_loss(
-                    targets[n, neuron_index, :],
-                    outputs[n, neuron_index, :]
-                )
+            loss += mse_loss(
+                targets[n, loss_indices[n], :],
+                outputs[n, loss_indices[n], :]
+            )
     elif attention_scheme in ['BfromN', 'BfromB']:
         for behavior_index in loss_indices[:3]:
             loss += mse_loss(
-                    targets[:, behavior_index, :],
-                    outputs[:, behavior_index, :]
+                targets[:, behavior_index, :],
+                outputs[:, behavior_index, :]
             )
-        loss += mse_loss(
+        loss += (1/30) * mse_loss(
             targets[:, num_neurons+3:-1, :],
             outputs[:, num_neurons+3:-1, :]
         )
-
-    return loss
+    # average loss across all samples in the batch
+    return loss / num_samples
 
 
 def get_recorded_neuron_indices(targets, num_neurons, num_samples):
@@ -182,7 +184,7 @@ if __name__ == '__main__':
     num_iterations = 1_000_000 #1_000_000
     num_epochs = 2001
     learning_rate = 1e-5
-    exp_name = 'exp_2025010801'
+    exp_name = 'exp_2025011300'
     log_directory = f'{base}/{exp_name}'
     log_ckpt_freq = 10
     random_seed = 1912 # Alan Turing's birth year :)
@@ -191,7 +193,7 @@ if __name__ == '__main__':
     num_inputs = 51
     num_neurons = 17
     num_behaviors = 34 # 3 (cepnem beh) + 30 (body angles) + 1 (heat-stim)
-    attention_scheme = 'NfromB'
+    attention_scheme = 'BfromN'
 
     model = AttentionModel2(
         depth,
