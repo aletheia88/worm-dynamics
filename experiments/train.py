@@ -58,7 +58,10 @@ def train(
             num_samples = targets.shape[0]
 
             if attention_scheme in ['NfromN', 'NfromB']:
-                loss_indices = get_recorded_neuron_indices(targets, num_neurons)
+                recorded_neuron_indices = get_recorded_neuron_indices(targets, num_neurons,
+                                                           num_samples)
+                # randomly drop one recorded neuron
+                loss_indices = drop_neuron(recorded_neuron_indices, num_samples, 1)
 
             optimizer.zero_grad()
             outputs, attention_weights = model(inputs)
@@ -135,18 +138,28 @@ def aggregate_loss(
     return loss
 
 
-def get_recorded_neuron_indices(targets, num_neurons):
+def get_recorded_neuron_indices(targets, num_neurons, num_samples):
 
-    batch_size = targets.shape[0]
     recorded_neuron_indices = {}
 
-    for n in range(batch_size):
+    for n in range(num_samples):
         recorded_neuron_indices[n] = [
             i for i in range(num_neurons)
             if (torch.max(targets[n, i, :]).item() != -10
             and torch.min(targets[n, i, :]).item() != -10)
         ]
     return recorded_neuron_indices
+
+
+def drop_neuron(recorded_neuron_indices, num_samples, num_drop):
+
+    loss_indices = recorded_neuron_indices.copy()
+
+    for n in range(num_samples):
+        drop_index = np.random.choice(recorded_neuron_indices[n], num_drop)
+        loss_indices.remove(drop_index)
+
+    return loss_indices
 
 
 if __name__ == '__main__':
