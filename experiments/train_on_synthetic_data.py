@@ -30,28 +30,39 @@ def generate_synthetic_data(num_datasets, num_inputs, max_length, amplitude_rang
     return np.array(all_samples)
 
 
-def zscore_normalize(raw_data, tfm_type='zscore'):
+def zscore_normalize(raw_data, params=None):
 
     normalized_data = deepcopy(raw_data)
     _, num_inputs, _ = raw_data.shape
 
+    if params == None:
+        zscore_params = {i: {} for i in range(num_inputs)}
+
     for i in range(num_inputs):
 
-        mean = np.mean(raw_data[:, i, :])
-        stddev = np.std(raw_data[:, i, :])
+        if params == None:
+            mean = np.mean(raw_data[:, i, :])
+            stddev = np.std(raw_data[:, i, :])
+            zscore_params[i] = {'mu': mean, 'sigma': stddev}
+        else:
+            mean = params[i]['mu']
+            stddev = params[i]['sigma']
+
         normalized_data[:, i, :] = (raw_data[:, i, :] - mean) / stddev
 
-    return normalized_data
+    if params == None:
+        return normalized_data, zscore_params
+    else:
+        return normalized_data
 
 
-def split_train_test(data, num_datasets, train_set_ratio, ds_name):
+def split_train_test(data, num_datasets, train_set_ratio, ds_name, save=False):
 
     data_dir = '/store1/alicia/attention_predict/data'
     train_size = int(num_datasets * train_set_ratio)
     test_size = num_datasets - train_size
     print(f'train-test splits: {train_size, test_size}')
 
-    np.random.seed(random_seed)
     indices = np.random.choice(num_datasets, num_datasets, replace=False)
 
     train_indices = indices[:train_size]
@@ -60,12 +71,12 @@ def split_train_test(data, num_datasets, train_set_ratio, ds_name):
     train_set = data[train_indices, :, :]
     test_set = data[test_indices, :, :]
 
-    train_datasets = datasets[train_indices]
-    test_datasets = datasets[test_indices]
+    if save:
+        np.save(f'{data_dir}/{ds_name}_raw_train.npy', train_set)
+        np.save(f'{data_dir}/{ds_name}_raw_eval.npy', test_set)
+        print(f'train-test splits for {ds_name}_raw saved!')
 
-    np.save(f'{data_dir}/{ds_name}_raw_train.npy', train_set)
-    np.save(f'{data_dir}/{ds_name}_raw_eval.npy', test_set)
-    print(f'train-test splits for {ds_name}_raw saved!')
+    return train_set, test_set
 
 
 def create_data_files():
@@ -83,7 +94,19 @@ def create_data_files():
     )
     ds_name = 'synthetic'
     train_set_ratio = 0.7
-    split_train_test(synthetic_data, num_datasets, train_set_ratio, ds_name)
+    train_set, test_set = split_train_test(
+        synthetic_data,
+        num_datasets,
+        train_set_ratio,
+        ds_name
+    )
+    normalized_train_data, zscore_params = zscore_normalize(train_set)
+    print(zscore_params)
+    normalized_test_data = zscore_normalize(test_set, zscore_params)
+
+    data_dir = '/store1/alicia/attention_predict/data'
+    np.save(f'{data_dir}/{ds_name}_train_norm.npy', normalized_train_data)
+    np.save(f'{data_dir}/{ds_name}_eval_norm.npy', normalized_test_data)
 
 
 if __name__ == '__main__':
