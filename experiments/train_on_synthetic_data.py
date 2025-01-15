@@ -6,6 +6,111 @@ import numpy as np
 import torch
 
 
+def train(mse_scheme):
+
+    depth = 3
+    num_neurons = 5
+    num_behaviors = 0 # not used
+    attention_scheme = 'NfromN'
+    device = "cuda:2"
+    data_dir = '/home/alicia/store1/alicia/attention_predict/data'
+    ds_name = 'synthetic'
+    window_size = 400
+    window_stride = 1
+    batch_size = 32
+
+    model = AttentionModel2(
+        depth,
+        num_neurons,
+        num_behaviors,
+        window_size,
+        attention_scheme=attention_scheme,
+        device=device
+    )
+    training_dataset = CElegansDatasetPlus(
+        f'{data_dir}/{ds_name}_train_norm.npy',
+        f'{data_dir}/{ds_name}_train_ds.npy',
+        window_stride=window_stride,
+        window_size=window_size,
+        device=device,
+        slices=slice(0, 1600)
+    )
+    training_dataloader = torch.utils.data.DataLoader(
+        training_dataset,
+        batch_size=batch_size,
+        shuffle=True
+    )
+
+    learning_rate = 1e-5
+    num_epochs = 500
+    num_iterations = 1_000_000
+    log_dir = f'/home/alicia/store1/alicia/attention_predict/exp_{mse_scheme}'
+    ensure_dir_exists([f'{log_dir}/checkpoints'])
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    mse_loss = torch.nn.MSELoss(reduction='sum')
+
+    loss_dict = {'training': [], 'validation': []}
+    num_inputs = next(iter(training_dataloader))[0].shape[1]
+    loss_indices = list(range(num_neurons))
+
+    for n_epoch in tqdm(range(num_epochs)):
+
+        for n_iter, (inputs, _, _, _, _) in tqdm(enumerate(training_dataloader)):
+
+            if n_iter == num_iterations:
+                break
+
+            num_samples = inputs.shape[0]
+            optimizer.zero_grad()
+            outputs, attention_weights = model(inputs)
+            loss = compute_loss(inputs, outputs, mse_loss, mse_scheme)
+            loss.backward()
+            optimizer.step()
+            loss_dict['training'].append(loss.item())
+
+        with open(f'{log_dir}/losses.json', 'w') as f:
+            json.dump(loss_dict, f, indent=4)
+
+        if log_ckpt_freq is not None and n_epoch % log_ckpt_freq == 0:
+
+            torch.save(
+                {
+                    'epoch': n_epoch,
+                    'state_dict': model.state_dict(),
+                    'attention': attention_weights,
+                    'optimizer': optimizer.state_dict(),
+                },
+                    f'{log_dir}/checkpoints/model_ckpt{n_epoch}.pt'
+            )
+
+
+def ensure_dir_exists(directories):
+    import os
+    for directory in directories:
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+
+
+def compute_loss(targets, outputs, mse_loss, mse_scheme):
+
+    num_samples, num_variables, length = targets.shape
+
+    if mse_scheme == 'average_by_length':
+        loss = mse_loss(targets, outputs) / length
+
+    elif mse_scheme == 'average_by_variable':
+        loss = mse_loss(targets, outputs) / num_variables
+
+    elif mse_scheme == 'average_by_all':
+        loss = mse_loss(targets, outputs) / (length * num_variables)
+
+    elif mse_scheme == 'sum':
+        loss = mse_loss(targets, outputs)
+
+    return loss / num_samples
+
+
 def create_data_files():
 
     num_datasets = 100
@@ -114,4 +219,4 @@ def create_data_files():
 
 
 if __name__ == '__main__':
-    create_data_files()
+    train('average_by_length')
