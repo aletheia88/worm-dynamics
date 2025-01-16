@@ -75,7 +75,6 @@ def train(
                     mse_loss,
                     num_samples,
                     attention_scheme,
-                    num_neurons,
             )
             loss.backward()
             # add gradient clipping
@@ -114,7 +113,6 @@ def aggregate_loss(
     mse_loss,
     num_samples,
     attention_scheme,
-    num_neurons,
 ):
     """ Compute MSE loss for each batch separately on the reconstruction of recorded
     neural and behavioral activities. """
@@ -127,14 +125,13 @@ def aggregate_loss(
                 outputs[n, loss_indices[n], :]
             )
     elif attention_scheme in ['BfromN', 'BfromB']:
-        for behavior_index in loss_indices[:3]:
-            loss += mse_loss(
-                targets[:, behavior_index, :],
-                outputs[:, behavior_index, :]
-            )
+        loss += mse_loss(
+            targets[:, loss_indices[:3], :],
+            outputs[:, loss_indices[:3], :]
+        )
         loss += (1/30) * mse_loss(
-            targets[:, num_neurons+3:-1, :],
-            outputs[:, num_neurons+3:-1, :]
+            targets[:, loss_indices[3:-1], :],
+            outputs[:, loss_indices[3:-1], :]
         )
     # average loss across all samples in the batch
     return loss / num_samples
