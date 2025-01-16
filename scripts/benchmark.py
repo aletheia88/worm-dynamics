@@ -28,7 +28,7 @@ def evaluate_signal_mixing(
     window_size = 400
     num_windows = max_length // window_size
 
-    reconstruction_loss = torch.nn.MSELoss()
+    reconstruction_loss = torch.nn.MSELoss(reduction='sum')
     all_indices = list(range(num_neurons + num_behaviors))
     dataset = dataloader.dataset
 
@@ -322,11 +322,11 @@ def print_contexts(num_top_contributors):
 
     architecture = 'attention_model_2'
     attention_scheme = 'BfromN'
-    ds_name = 'steve1230_norm_eval'
+    ds_name = 'data0108_norm_eval'
     device = 'cuda:2'
-    model_ckpt = 2000
-    experiment = 'exp_2024122400'
-    num_neurons = 14
+    model_ckpt = 760
+    experiment = 'exp_2025011300'
+    num_neurons = 17
     num_behaviors = 34
     num_worms = 20
 
@@ -354,8 +354,11 @@ def print_contexts(num_top_contributors):
         num_neurons,
         num_behaviors
     )
-    neurons = ['SMDD', 'SAADL', 'SAADR', 'SAAV', 'M3', 'M4', 'MI', 'AVB', 'RIB',
-            'RME', 'RMEV', 'RMED', 'URYD', 'URYV']
+    neurons = ['SMDV', 'SMDD', 'SAADL', 'SAADR', 'SAAV',
+               'MC', 'M3', 'M4', 'MI',
+               'AVA', 'AVB', 'RIB',
+               'RME', 'RMEV', 'RMED',
+               'URYD', 'URYV']
     behaviors = ['velocity', 'pumping', 'head-angle']
     num_body_angles = 30
     behaviors += [f'body-angle-{i}' for i in range(1, num_body_angles+1)]
@@ -376,11 +379,11 @@ def main():
 
     architecture = 'attention_model_2'
     attention_scheme = 'BfromN'
-    ds_name = 'steve1230_norm_eval'
+    ds_name = 'data0108_norm_eval'
     device = 'cuda:2'
-    model_ckpt = 2000
-    experiment = 'exp_2024122400'
-    num_neurons = 14
+    model_ckpt = 760
+    experiment = 'exp_2025011300'
+    num_neurons = 17
     num_behaviors = 34
     num_worms = 20
 
