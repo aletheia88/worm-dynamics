@@ -20,7 +20,8 @@ def train(
     learning_rate,
     random_seed,
     log_directory,
-    log_ckpt_freq=None,
+    log_ckpt_freq,
+    num_drop,
 ):
 
     ckpt_directory = f'{log_directory}/checkpoints'
@@ -40,10 +41,6 @@ def train(
     neuron_indices = list(range(num_neurons))
     behavior_indices = list(range(num_neurons, num_inputs))
 
-    # set random seed for reproducible masking
-    # torch.manual_seed(random_seed)
-    # np.random.seed(random_seed)
-
     if attention_scheme in ['BfromN', 'BfromB']:
         loss_indices = behavior_indices
 
@@ -57,16 +54,24 @@ def train(
             targets = deepcopy(inputs)
             num_samples = targets.shape[0]
 
+            recorded_neuron_indices = get_recorded_neuron_indices(
+                targets,
+                num_neurons,
+                num_samples
+            )
+            # drop zero or more recorded neuron randomly
+            remaining_indices, neuron_mask = drop_neuron(
+                recorded_neuron_indices,
+                num_samples,
+                num_drop,
+                num_inputs,
+                window_size
+            )
             if attention_scheme in ['NfromN', 'NfromB']:
-                recorded_neuron_indices = get_recorded_neuron_indices(
-                    targets,
-                    num_neurons,
-                    num_samples
-                )
-                # randomly drop one recorded neuron
-                loss_indices = drop_neuron(recorded_neuron_indices, num_samples, 1)
+                loss_indices = remaining_indices
 
             optimizer.zero_grad()
+            inputs[neuron_mask] = -10
             outputs, attention_weights = model(inputs)
             loss = aggregate_loss(
                     targets,
@@ -150,15 +155,26 @@ def get_recorded_neuron_indices(targets, num_neurons, num_samples):
     return recorded_neuron_indices
 
 
-def drop_neuron(recorded_neuron_indices, num_samples, num_drop):
+def drop_neuron(
+    recorded_neuron_indices,
+    num_samples,
+    num_drop,
+    num_inputs,
+    window_size
+):
+    neuron_mask = np.zeros((num_samples, num_inputs, window_size), dtype=bool)
+    if num_drop == 0:
+        return recorded_neuron_indices, neuron_mask
 
-    loss_indices = recorded_neuron_indices.copy()
+    remaining_neuron_indices = recorded_neuron_indices.copy()
+    # create mask to replace inputs[n, drop_index, :] with -10 for each sample n
 
     for n in range(num_samples):
         drop_index = np.random.choice(recorded_neuron_indices[n], num_drop)
-        loss_indices.remove(drop_index)
+        remaining_neuron_indices[n].remove(drop_index)
+        neuron_mask[n, drop_index, :] = True
 
-    return loss_indices
+    return remaining_neuron_indices, neuron_mask
 
 
 if __name__ == '__main__':
@@ -191,6 +207,7 @@ if __name__ == '__main__':
     num_neurons = 17
     num_behaviors = 34 # 3 (cepnem beh) + 30 (body angles) + 1 (heat-stim)
     attention_scheme = 'BfromN'
+    num_drop = 1
 
     model = AttentionModel2(
         depth,
@@ -211,6 +228,7 @@ if __name__ == '__main__':
         learning_rate,
         random_seed,
         log_directory,
-        log_ckpt_freq
+        log_ckpt_freq,
+        num_drop
     )
 
