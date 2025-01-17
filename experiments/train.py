@@ -33,7 +33,7 @@ def train(
         shuffle=True)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    mse_loss = torch.nn.MSELoss(reduction='sum')
+    mse_loss = torch.nn.MSELoss()
 
     loss_dict = {'training': [], 'validation': []}
     num_inputs = next(iter(training_dataloader))[0].shape[1]
@@ -82,10 +82,7 @@ def train(
                     attention_scheme,
             )
             loss.backward()
-            # add gradient clipping
-            # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
-            # log average loss over all samples in the batch per iteration
             loss_dict['training'].append(loss.item())
 
         with open(f'{log_directory}/losses.json', 'w') as f:
@@ -118,6 +115,7 @@ def aggregate_loss(
     mse_loss,
     num_samples,
     attention_scheme,
+    l2_lambda=1e-4
 ):
     """ Compute MSE loss for each batch separately on the reconstruction of recorded
     neural and behavioral activities. """
@@ -130,16 +128,23 @@ def aggregate_loss(
                 outputs[n, loss_indices[n], :]
             )
     elif attention_scheme in ['BfromN', 'BfromB']:
-        loss += mse_loss(
-            targets[:, loss_indices[:3], :],
-            outputs[:, loss_indices[:3], :]
-        )
-        loss += (1/30) * mse_loss(
-            targets[:, loss_indices[3:-1], :],
-            outputs[:, loss_indices[3:-1], :]
-        )
+        ### using torch.nn.MSELoss()
+        ### experimenting with regularization
+        l2_norm = sum(param.pow(2.0).sum() for param in model.parameters())
+        loss = mse_loss(targets, outputs) + l2_norm * l2_lambda
+        ### using torch.nn.MSELoss()
+        # loss = mse_loss(targets, outputs)
+        ### using torch.nn.MSELoss(reducton == 'sum')
+        # loss += mse_loss(
+        #     targets[:, loss_indices[:3], :],
+        #     outputs[:, loss_indices[:3], :]
+        # )
+        # loss += (1/30) * mse_loss(
+        #     targets[:, loss_indices[3:-1], :],
+        #     outputs[:, loss_indices[3:-1], :]
+        # )
     # average loss across all samples in the batch
-    return loss / num_samples
+    return loss
 
 
 def get_recorded_neuron_indices(targets, num_neurons, num_samples):
@@ -179,7 +184,7 @@ def drop_neuron(
 
 if __name__ == '__main__':
 
-    device = "cuda:2"
+    device = "cuda:3"
     window_size = 400
     window_stride = 1
     ds_name = 'data0108_norm'
@@ -196,8 +201,8 @@ if __name__ == '__main__':
     )
     num_iterations = 1_000_000 #1_000_000
     num_epochs = 2001
-    learning_rate = 1e-5
-    exp_name = 'exp_2025011300'
+    learning_rate = 1e-4
+    exp_name = 'exp_2025011700'
     log_directory = f'{base}/{exp_name}'
     log_ckpt_freq = 10
     random_seed = 1912 # Alan Turing's birth year :)
@@ -207,7 +212,7 @@ if __name__ == '__main__':
     num_neurons = 17
     num_behaviors = 34 # 3 (cepnem beh) + 30 (body angles) + 1 (heat-stim)
     attention_scheme = 'BfromN'
-    num_drop = 1
+    num_drop = 0
 
     model = AttentionModel2(
         depth,
