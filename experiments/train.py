@@ -130,8 +130,9 @@ def aggregate_loss(
     elif attention_scheme in ['BfromN', 'BfromB']:
         ### using torch.nn.MSELoss()
         ### experimenting with regularization
-        l2_norm = sum(param.pow(2.0).sum() for param in model.parameters())
-        loss = mse_loss(targets, outputs) + l2_norm * l2_lambda
+        # l2_norm = sum(param.pow(2.0).sum() for param in model.parameters())
+        # loss = mse_loss(targets, outputs) + l2_norm * l2_lambda
+        loss = mse_loss(targets, outputs)
         ### using torch.nn.MSELoss()
         # loss = mse_loss(targets, outputs)
         ### using torch.nn.MSELoss(reducton == 'sum')
@@ -202,7 +203,7 @@ if __name__ == '__main__':
     num_iterations = 1_000_000 #1_000_000
     num_epochs = 2001
     learning_rate = 1e-4
-    exp_name = 'exp_2025011700'
+    exp_name = 'exp_2025011701'
     log_directory = f'{base}/{exp_name}'
     log_ckpt_freq = 10
     random_seed = 1912 # Alan Turing's birth year :)
