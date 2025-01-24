@@ -90,7 +90,6 @@ def reconstruct_traces(
     model.eval()
 
     reconstruction_loss = torch.nn.MSELoss()
-    num_inputs = next(iter(dataloader))[0].shape[1]
 
     left_slider = 0
     right_slider = 0

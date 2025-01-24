@@ -85,7 +85,7 @@ class UNet(torch.nn.Module):
 
         for level in range(self.depth):
             fmaps_in, fmaps_out = self.compute_fmaps_encoder(level)
-            #print(f'left conv: in: {fmaps_in} -> out: {fmaps_out}')
+            # print(f'left conv: in: {fmaps_in} -> out: {fmaps_out}')
             self.left_convs.append(
                 ConvBlock(
                     fmaps_in,
@@ -101,7 +101,7 @@ class UNet(torch.nn.Module):
 
         for level in range(self.depth - 1):
             fmaps_in, fmaps_out = self.compute_fmaps_decoder(level)
-            #print(f'right conv: in: {fmaps_in} -> out: {fmaps_out}')
+            # print(f'right conv: in: {fmaps_in} -> out: {fmaps_out}')
             self.right_convs.append(
                 ConvBlock(
                     fmaps_in,
@@ -177,12 +177,12 @@ class UNet(torch.nn.Module):
             conv_out = self.left_convs[i](layer_input)
             convolution_outputs.append(conv_out)
             downsampled = self.downsample(conv_out)
-            #print(f'left conv{i}: {conv_out.shape} -> {downsampled.shape}')
+            # print(f'left conv{i}: {conv_out.shape} -> {downsampled.shape}')
             layer_input = downsampled
 
         conv_out = self.left_convs[-1](layer_input)
         layer_input = conv_out
-        #print(f'bottle neck: {layer_input.shape}')
+        # print(f'bottle neck: {layer_input.shape}')
 
         # right
         for i in range(0, self.depth - 1)[::-1]:
@@ -190,7 +190,7 @@ class UNet(torch.nn.Module):
             upsampled = self.upsample(layer_input)
             concat = self.crop_and_concat(convolution_outputs[i], upsampled)
             conv_output = self.right_convs[i](concat)
-            #print(f'right conv{i}: {layer_input.shape} -> {upsampled.shape} -> {concat.shape} -> {conv_output.shape}')
+            # print(f'right conv{i}: {layer_input.shape} -> {upsampled.shape} -> {concat.shape} -> {conv_output.shape}')
             layer_input = conv_output
 
         return self.final_conv(layer_input)
@@ -266,6 +266,9 @@ class ConvBlock(torch.nn.Module):
         if kernel_size % 2 == 0:
             msg = "Only allowing odd kernel sizes."
             raise ValueError(msg)
+
+        self.in_channels = in_channels
+        self.out_channels = out_channels
 
         convops = {1: torch.nn.Conv1d, 2: torch.nn.Conv2d, 3: torch.nn.Conv3d}
         self.conv_pass = torch.nn.Sequential(
@@ -356,9 +359,9 @@ if __name__ == "__main__":
     in_channels = 5
     out_channels = 5
     unet_dim = 1
-
+    window_size = 400
     # (batch, channels, height, width)
-    x = torch.rand(1, in_channels, 1600)
+    x = torch.rand(1, in_channels, window_size)
     model = UNet(depth, in_channels, out_channels, unet_dim=unet_dim)
     y = model(x)
     print(f'output dim: {y.shape}')

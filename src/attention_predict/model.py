@@ -51,7 +51,7 @@ class PredictModel(torch.nn.Module):
             dropout=None,
             residual=False,
             normalize=False,
-            device="cuda:3"):
+            device='cpu'):
 
         super().__init__()
         self.num_inputs = num_inputs
@@ -144,14 +144,18 @@ class PredictModel(torch.nn.Module):
         keys = []
         for i in range(self.num_inputs):
             input_embeddings = self.encoders[i](inputs[:, i, :])
+            print(f'inputs: {input_embeddings.shape}')
             one_hot_encoding = self.one_hots[i].repeat(num_samples, 1)
+            print(f'label: {one_hot_encoding.shape}')
             key = torch.cat((input_embeddings, one_hot_encoding), 1)
+            print(f'single key: {key.shape}')
             # key: (b, embedding_dims + num_inputs)
             key = torch.unsqueeze(key, axis=1)
             # key: (b, 1, embedding_dims + num_inputs)
             keys.append(key)
 
         keys = torch.cat(keys, axis=1)
+        print(f'all keys: {keys.shape}')
         # keys: (b, num_inputs, embedding_dims + num_inputs)
 
         # prepare for "self-attention" where key = query = value
@@ -164,7 +168,8 @@ class PredictModel(torch.nn.Module):
             values,
             attn_mask=self.attn_mask)
         # attn_output: (b, num_inputs, embedding_dims + num_inputs)
-
+        print(f'attention output: {attn_output.shape}')
+        print(f'attention weights: {attn_weights.shape}')
         outputs = [
             self.decoders[i](attn_output[:, i, :])
             # output: (b, input_dims)
@@ -179,13 +184,15 @@ class PredictModel(torch.nn.Module):
 
 if __name__ == "__main__":
 
-    inputs = torch.rand(30, 4, 1600)
+    input_dims = 400
     num_inputs = 4
-    input_dims = 1600
     embedding_dims = 1024
+    device = 'cuda:2'
+    inputs = torch.rand(1, num_inputs, input_dims).to(device)
     model = PredictModel(
         num_inputs,
         input_dims,
         embedding_dims,
-        residual=True)
+        residual=True,
+        device=device).to(device)
     outputs, attn_weights = model(inputs)

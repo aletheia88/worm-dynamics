@@ -128,21 +128,26 @@ if __name__ == "__main__":
     window_stride = 400
     window_size = 400
     batch_size = 1
+    base = '/home/alicia/notebook/alicia/worm-dynamics'
+    ds_name = 'AVA_MC_SMDV_test'
     dataset = CElegansDatasetPlus(
-        "../../data/AVA_MC_all_test.npy",
-        "../../data/AVA_MC_all_test_ds.npy",
+        f'{base}/data/{ds_name}.npy',
+        f'{base}/data/{ds_name}_ds.npy',
         window_stride=window_stride,
         window_size=window_size,
         device=device,
         slices=slice(0, 1600)
     )
+    print(dataset.datasets)
     dataloader = torch.utils.data.DataLoader(
         dataset,
         batch_size=batch_size,
         shuffle=False
     )
-    for n_iter, (inputs, worm, start_frame, end_frame, ds) in enumerate(dataloader):
-        print(f'Iteration: {n_iter}')
-        print(f'inputs: {inputs.shape}')
-        print(f'dataset name: {ds[0]}')
-        print(f'worm: {worm.item()} (start, end): {(start_frame.item(), end_frame.item())}')
+    mse_per_dataset = {ds: {col: [] for col in range(6)} for ds in dataset.datasets}
+    print(mse_per_dataset)
+    # for n_iter, (inputs, worm, start_frame, end_frame, ds) in enumerate(dataloader):
+    #     print(f'Iteration: {n_iter}')
+    #     print(f'inputs: {inputs.shape}')
+    #     print(f'dataset name: {ds[0]}')
+    #     print(f'worm: {worm.item()} (start, end): {(start_frame.item(), end_frame.item())}')
