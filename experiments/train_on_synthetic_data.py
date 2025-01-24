@@ -2,6 +2,7 @@ from attention_predict.attention_model_2 import AttentionModel2
 from attention_predict.dataset import CElegansDatasetPlus
 from copy import deepcopy
 from tqdm import tqdm
+import json
 import numpy as np
 import torch
 
@@ -12,7 +13,7 @@ def train(mse_scheme):
     num_neurons = 5
     num_behaviors = 0 # not used
     attention_scheme = 'NfromN'
-    device = "cuda:2"
+    device = "cuda:3"
     data_dir = '/home/alicia/store1/alicia/attention_predict/data'
     ds_name = 'synthetic'
     window_size = 400
@@ -53,6 +54,7 @@ def train(mse_scheme):
     loss_dict = {'training': [], 'validation': []}
     num_inputs = next(iter(training_dataloader))[0].shape[1]
     loss_indices = list(range(num_neurons))
+    log_ckpt_freq = 10
 
     for n_epoch in tqdm(range(num_epochs)):
 
@@ -216,4 +218,4 @@ def zscore_normalize(raw_data, params=None):
 
 
 if __name__ == '__main__':
-    train('average_by_length')
+    train('sum')

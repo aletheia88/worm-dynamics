@@ -259,7 +259,7 @@ def ensure_dir_exists(directories):
 
 if __name__ == "__main__":
 
-    device = "cuda:2"
+    device = "cuda:3"
     window_size = 400
     window_stride = 1
     ds_name = 'RID_AVE_RIV_AVD_AIN'

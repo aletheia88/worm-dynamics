@@ -170,7 +170,7 @@ if __name__ == '__main__':
     num_iterations = 1_000_000 #1_000_000
     num_epochs = 1000
     learning_rate = 1e-4
-    exp_name = 'exp_2024111800'
+    exp_name = 'exp_2024111901'
     log_directory = f'{base}/{exp_name}'
     log_ckpt_freq = 10
     random_seed = 1912 # Alan Turing's birth year :)
@@ -179,7 +179,7 @@ if __name__ == '__main__':
     num_inputs = 6
     num_neurons = 3
     num_behaviors = 3
-    attention_scheme = 'BfromB'
+    attention_scheme = 'BfromN'
 
     model = HybridNet(
             depth,

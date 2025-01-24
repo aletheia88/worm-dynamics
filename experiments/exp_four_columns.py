@@ -48,7 +48,7 @@ def train(
                 break
 
             targets = deepcopy(inputs)
-            mask_indices = sample_mask_indices(num_inputs)
+            mask_indices = get_mask_indices(num_inputs)
             inputs[:, mask_indices, :] = 0
             optimizer.zero_grad()
             outputs = model(inputs)

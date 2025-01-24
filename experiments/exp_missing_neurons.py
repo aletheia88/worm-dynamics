@@ -8,8 +8,8 @@ import torch
 
 
 def aggregate_loss(targets, outputs, recorded_neuron_indices, behavior_indices):
-    """ Compute MSE loss for each batch separately on the reconstruction of recorded
-    neural and behavioral activities. """
+    """ Compute MSE loss for each sample in a batch separately on the reconstruction of
+    recorded neural and behavioral activities. """
 
     # both `targets` and `outputs` have shape (batch_size, num_inputs, window_size)
     batch_size = targets.shape[0]
@@ -92,7 +92,7 @@ def get_recorded_neuron_indices(targets, num_neurons):
     for n in range(batch_size):
         recorded_neuron_indices[n] = [
             i for i in range(num_neurons)
-            if (torch.max(targets[n, i, :]).item() != 0
+            if (torch.behavior_indices = list(range(num_neurons, num_inputs))max(targets[n, i, :]).item() != 0
             and torch.min(targets[n, i, :]).item() != 0)
         ]
     return recorded_neuron_indices
@@ -287,7 +287,7 @@ if __name__ == "__main__":
     num_iterations = 1_000_000
     num_epochs = 100
     learning_rate = 1e-4
-    exp_name = 'exp_2024101000_control'
+    exp_name = 'exp_2024101100_control'
     log_directory = f'/home/alicia/store1/alicia/attention_predict/{exp_name}'
     log_ckpt_freq = 10
     random_seed = 1912 # Alan Turing's birth year :)

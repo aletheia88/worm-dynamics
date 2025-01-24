@@ -121,6 +121,7 @@ def aggregate_loss(
     neural and behavioral activities. """
 
     loss = 0
+    # TODO: replacing for-loop with a binary mask
     if attention_scheme in ['NfromN', 'NfromB']:
         for n in range(num_samples):
             loss += mse_loss(
