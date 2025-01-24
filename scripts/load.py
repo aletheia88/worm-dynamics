@@ -7,7 +7,7 @@ import json
 import numpy as np
 
 
-def assemble_all(neuron_classes, behavior_index_dict, max_len=1600):
+def assemble_all(neuron_classes, behavior_index_dict, max_len=1600, normalize=True):
 
     datasets = []
     all_outputs = {neuron_class: {} for neuron_class in neuron_classes}
@@ -45,25 +45,26 @@ def assemble_all(neuron_classes, behavior_index_dict, max_len=1600):
                 assembled_data[i, pumping_index, :] = behaviors['pumping'][ds_index]
                 assembled_data[i, angle_index, :] = behaviors['head_angle'][ds_index]
 
-    # normalize neural traces across animals
-    for i in range(num_neurons):
-        all_neural_traces = assembled_data[:, i, :]
-        assembled_data[:, i, :] = all_neural_traces / (2 * np.mean(all_neural_traces)) - 1
-        # assembled_data[:, i, :] = 2 * all_neural_traces / np.mean(all_neural_traces) - 1
+    if normalize:
+        # normalize neural traces across animals
+        for i in range(num_neurons):
+            all_neural_traces = assembled_data[:, i, :]
+            assembled_data[:, i, :] = all_neural_traces / (2 * np.mean(all_neural_traces)) - 1
+            # assembled_data[:, i, :] = 2 * all_neural_traces / np.mean(all_neural_traces) - 1
 
-    # normalize velocity traces
-    all_velocity_traces = assembled_data[:, velocity_index, :]
-    assembled_data[:, velocity_index, :] = all_velocity_traces * 10
-    # normalize pumping
-    all_pumping_traces = assembled_data[:, pumping_index, :]
-    assembled_data[:, pumping_index, :] = all_pumping_traces / 2 - 1
-    # normalize head angle
-    all_head_angle_traces = assembled_data[:, angle_index, :]
-    min_val = np.min(all_head_angle_traces)
-    max_val = np.max(all_head_angle_traces)
-    normalized_head_angle = 2 * ((all_head_angle_traces - min_val) /
-                                 (max_val - min_val)) - 1
-    assembled_data[:, angle_index, :] = normalized_head_angle
+        # normalize velocity traces
+        all_velocity_traces = assembled_data[:, velocity_index, :]
+        assembled_data[:, velocity_index, :] = all_velocity_traces * 10
+        # normalize pumping
+        all_pumping_traces = assembled_data[:, pumping_index, :]
+        assembled_data[:, pumping_index, :] = all_pumping_traces / 2 - 1
+        # normalize head angle
+        all_head_angle_traces = assembled_data[:, angle_index, :]
+        min_val = np.min(all_head_angle_traces)
+        max_val = np.max(all_head_angle_traces)
+        normalized_head_angle = 2 * ((all_head_angle_traces - min_val) /
+                                     (max_val - min_val)) - 1
+        assembled_data[:, angle_index, :] = normalized_head_angle
 
     return assembled_data, unique_datasets
 
@@ -489,10 +490,14 @@ def load_single_neuron_class(
                     reversals.append(behaviors['reversal_events'].T)
                     flip_factor = -1 if structure_data[ds]['Flipped'] else 1
                     std_behaviors.append(
-                            np.array([
-                                behaviors["velocity"][:max_len],
-                                behaviors["pumping"][:max_len],
-                                behaviors["head_angle"][:max_len] * flip_factor]).T)
+                        # np.array([
+                        #     behaviors["velocity"][:max_len],
+                        #     behaviors["pumping"][:max_len],
+                        #     behaviors["head_angle"][:max_len] * flip_factor]).T
+                        np.array(
+                            [behaviors["velocity"][:max_len]]
+                        ).T
+                    )
                     gcamp_traces.append(gcamp_data[:max_len, items["index"] - 1])
                     datasets.append(ds)
             if verbose:
@@ -532,12 +537,12 @@ def assemble_data_with_missing_neurons(neuron_classes, max_len):
         # Assuming velocity corresponds to column 0
         std_behaviors[:, :, 0] = 10 * std_behaviors[:, :, 0]
         # Assuming pumping corresponds to column 1
-        std_behaviors[:, :, 1] = std_behaviors[:, :, 1] / 2 - 1
+        # std_behaviors[:, :, 1] = std_behaviors[:, :, 1] / 2 - 1
         # Assuming head curvature corresponds to column 2
-        head_angle = std_behaviors[:, :, 2]
-        min_val = np.min(head_angle)
-        max_val = np.max(head_angle)
-        std_behaviors[:, :, 2] = 2 * ((head_angle - min_val) / (max_val - min_val)) - 1
+        # head_angle = std_behaviors[:, :, 2]
+        # min_val = np.min(head_angle)
+        # max_val = np.max(head_angle)
+        # std_behaviors[:, :, 2] = 2 * ((head_angle - min_val) / (max_val - min_val)) - 1
 
         all_data[neuron_class]['gcamp_traces'] = gcamp_traces
         all_data[neuron_class]['std_behaviors'] = std_behaviors
@@ -670,8 +675,10 @@ if __name__ == "__main__":
     # print(f'maximum unique datasets: {len(np.unique(assembled_datasets))}')
 
     ### Assemble traces for multiple neuron classes from all datasets
-    neuron_classes = ['AVA', 'MC', 'SMDV']
-    behavior_index_dict = {'velocity': 3, 'pumping': 4, 'head_angle': 5}
+    neuron_classes = ['AVA', 'MC', 'SMDV', 'RID', 'AVE', 'RIV', 'AVD', 'AIN']
+    num_neurons = len(neuron_classes)
+    behavior_index_dict = {'velocity': num_neurons, 'pumping': num_neurons + 1,
+                           'head_angle': num_neurons + 2}
     assembled_data, datasets = assemble_all(neuron_classes, behavior_index_dict)
     print(f'num datasets: {len(datasets)}')
     print(f'all datasets: {datasets}')

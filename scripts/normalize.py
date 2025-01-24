@@ -19,7 +19,7 @@ def write_normalized_data(ds_name, num_behaviors, tfm_type='zscore'):
         datasets = np.load(f'{data_dir}/{ds_name}_raw_{ds_type}_ds.npy')
 
         if tfm_type == 'zscore':
-
+            # ignore the last column that artificially expresses heat-stim
             for i in range(num_inputs - 1):
 
                 if i > num_neurons:
@@ -105,7 +105,7 @@ def get_linear_tfm_params(ds_name, upper_percentile=100, lower_percentile=0):
 
 if __name__ == '__main__':
 
-    ds_name = 'steve1230'
+    ds_name = 'data0108'
     num_behaviors = 34 # 34 = 3 (cepnem beh) + 30 (body angles) + 1 (heat-stim)
     tfm_params = get_zscore_tfm_params(ds_name, num_behaviors)
     print(tfm_params)

@@ -324,8 +324,8 @@ def print_contexts(num_top_contributors):
     attention_scheme = 'BfromN'
     ds_name = 'data0108_norm_eval'
     device = 'cuda:2'
-    model_ckpt = 760
-    experiment = 'exp_2025011300'
+    model_ckpt = 2000
+    experiment = 'exp_2025010800'
     num_neurons = 17
     num_behaviors = 34
     num_worms = 20
@@ -381,8 +381,8 @@ def main():
     attention_scheme = 'BfromN'
     ds_name = 'data0108_norm_eval'
     device = 'cuda:2'
-    model_ckpt = 760
-    experiment = 'exp_2025011300'
+    model_ckpt = 980
+    experiment = 'exp_2025010800'
     num_neurons = 17
     num_behaviors = 34
     num_worms = 20
@@ -448,5 +448,7 @@ def main():
         json.dump(evaluation, json_file, indent=4)
     print(f'evaluation results written under {result_path}')
 
+
 if __name__ == '__main__':
     main()
+    # print_contexts(3)

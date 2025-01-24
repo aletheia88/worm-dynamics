@@ -134,16 +134,21 @@ def write_shuffled_data(ds_name, num_neurons, random_seed, shuffle_type):
 
 if __name__ == "__main__":
 
-    ds_name = 'steve1230'
-    neuron_classes = ['SMDD', 'SAADL', 'SAADR', 'SAAV', 'M3', 'M4', 'MI', 'AVB', 'RIB',
-                      'RME', 'RMEV', 'RMED', 'URYD', 'URYV']
+    ds_name = 'data0108'
+    neuron_classes = [
+        'SMDV', 'SMDD', 'SAADL', 'SAADR', 'SAAV',
+        'MC', 'M3', 'M4', 'MI',
+        'AVA', 'AVB', 'RIB',
+        'RME', 'RMEV', 'RMED',
+        'URYD', 'URYV'
+    ]
     num_neurons = len(neuron_classes)
     num_body_angles = 30
     behavior_index_dict = {
-            'velocity': num_neurons,
-            'pumping': num_neurons + 1,
-            'head_angle': num_neurons + 2,
-            'body_angles': list(range(num_neurons+3, num_neurons+3+num_body_angles))
+        'velocity': num_neurons,
+        'pumping': num_neurons + 1,
+        'head_angle': num_neurons + 2,
+        'body_angles': list(range(num_neurons+3, num_neurons+3+num_body_angles))
     }
     write_raw_data(ds_name, neuron_classes, behavior_index_dict)
     split_train_valid_test(ds_name, random_seed=2025)
