@@ -119,7 +119,7 @@ class AttentionBlockMini(torch.nn.Module):
 
         elif attention_scheme == 'NfromB':
             attention_mask = attention_quadrants['nb']
-            attention_dims = {'k': (N, B), 'q': (B, B), 'w_k': (B, B), 'w_q': (B, B)}
+            attention_dims = {'k': (B, N), 'q': (B, B), 'w_k': (B, B), 'w_q': (B, B)}
 
         elif attention_scheme == 'BfromN':
             attention_mask = attention_quadrants['bn']
