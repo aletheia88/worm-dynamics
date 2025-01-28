@@ -1,8 +1,9 @@
 import torch
-from .attention import AttentionBlock
+from .attention_mini import AttentionBlockMini
 from .unet import Downsample, ConvBlock, OutputConv
 
-class AttentionModel2(torch.nn.Module):
+
+class AttentionModelMini(torch.nn.Module):
     """A U-Net, but with a shared attention layer between any path connecting the
     encoder and decoder (i.e., skip connections for the top levels and between the last
     convolution and upsampling on the lowest level).
@@ -13,6 +14,7 @@ class AttentionModel2(torch.nn.Module):
         depth: int,
         num_neurons: int,
         num_behaviors: int,
+        attention_scheme: str,
         window_size: int,
         num_fmaps: int = 8,
         fmap_inc_factor: int = 2,
@@ -21,14 +23,19 @@ class AttentionModel2(torch.nn.Module):
         downsample_factor: int = 2,
         upsample_mode: str = 'nearest',
         final_activation: torch.nn.Module | None = None,
-        attention_scheme: str = 'all',
         device: str = 'cpu',
     ):
         super().__init__()
 
         self.depth = depth
-        self.num_neurons = num_neurons
-        self.num_inputs = num_neurons + num_behaviors
+
+        ### TODO: encoder and decoder should have different num_inputs
+        ### bc there might be different number of encoders and decoders
+        if attention_scheme in ['NfromN', 'NfromB']:
+            self.num_inputs = num_neurons
+        elif attention_scheme in ['BfromB', 'BfromN']:
+            self.num_inputs = num_behaviors
+
         self.window_size = window_size
         self.num_fmaps = num_fmaps
         self.fmap_inc_factor = fmap_inc_factor
@@ -42,8 +49,8 @@ class AttentionModel2(torch.nn.Module):
         self.downsample = Downsample(self.downsample_factor, ndim=1)
         self.upsample = torch.nn.Upsample(
             scale_factor=self.downsample_factor,
-            mode=self.upsample_mode)
-
+            mode=self.upsample_mode
+        )
         self.encoder_block = torch.nn.ModuleList()
         self.decoder_block = torch.nn.ModuleList()
         self.final_convs = torch.nn.ModuleList()
@@ -71,7 +78,7 @@ class AttentionModel2(torch.nn.Module):
 
         embedding_dims = self.length * self.channels
 
-        self.attention_block = AttentionBlock(
+        self.attention_block = AttentionBlockMini(
             embedding_dims,
             num_neurons,
             num_behaviors,
