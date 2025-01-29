@@ -31,9 +31,9 @@ class AttentionModelMini(torch.nn.Module):
 
         ### TODO: encoder and decoder should have different num_inputs
         ### bc there might be different number of encoders and decoders
-        if attention_scheme in ['NfromN', 'NfromB']:
+        if attention_scheme in ['NfromN', 'BfromN']:
             self.num_inputs = num_neurons
-        elif attention_scheme in ['BfromB', 'BfromN']:
+        elif attention_scheme in ['BfromB', 'NfromB']:
             self.num_inputs = num_behaviors
 
         self.window_size = window_size
