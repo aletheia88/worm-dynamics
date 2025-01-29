@@ -41,23 +41,17 @@ class Head(torch.nn.Module):
     def forward(self, key, query, value):
 
         weighted_value = self.value_weights(value)
-        print(f'weighted value: {weighted_value.shape}')
 
         for i, linear in enumerate(self.query_weights):
             query = linear(query)
-            print(f'query {i}: {query.shape}')
         weighted_query = query
-        print(f'weighted query: {weighted_query.shape}')
 
         for i, linear in enumerate(self.key_weights):
             key = linear(key)
-            print(f'key {i}: {key.shape}')
-        weighted_key = key # (N, B) for BfromN
-        print(f'weighted key: {weighted_key.shape}')
+        weighted_key = key # keys shape: e.g., (N, B) for BfromN
 
         # attention_matrix shapes: (num_samples, B, N), (_, N, B), (_ , N, N), (_, B, B)
         attention_matrix = (weighted_query @ weighted_key).transpose(1, 2) / self.sqrt_dk
-        print(f'attention matrix: {attention_matrix.shape}')
         # apply attention masking
         attention_matrix = attention_matrix.masked_fill(self.attention_mask,
                                                         float('-inf'))
@@ -93,9 +87,6 @@ class MultiHeadAttention(torch.nn.Module):
         num_samples = value.shape[0]
         key = self.key.unsqueeze(0).expand(num_samples, -1, -1)
         query = self.query.unsqueeze(0).expand(num_samples, -1, -1)
-        print(f'key: {key.shape}')
-        print(f'query: {query.shape}')
-        print(f'value: {value.shape}')
 
         return self.head(key, query, value)
 
@@ -140,5 +131,5 @@ class AttentionBlockMini(torch.nn.Module):
     def forward(self, inputs):
 
         attention_outputs, attention_weights = self.attention(inputs)
-        print(f'attention outputs: {attention_outputs.shape}')
+
         return attention_outputs, attention_weights
