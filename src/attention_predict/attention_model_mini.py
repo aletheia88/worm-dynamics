@@ -29,12 +29,21 @@ class AttentionModelMini(torch.nn.Module):
 
         self.depth = depth
 
-        ### TODO: encoder and decoder should have different num_inputs
-        ### bc there might be different number of encoders and decoders
-        if attention_scheme in ['NfromN', 'BfromN']:
-            self.num_inputs = num_neurons
-        elif attention_scheme in ['BfromB', 'NfromB']:
-            self.num_inputs = num_behaviors
+        if attention_scheme == 'BfromN':
+            self.num_encoders = num_neurons
+            self.num_decoders = num_behaviors
+
+        elif attention_scheme == 'NfromB':
+            self.num_encoders = num_behaviors
+            self.num_decoders = num_neurons
+
+        elif attention_scheme == 'NfromN':
+            self.num_encoders = num_neurons
+            self.num_decoders = num_neurons
+
+        elif attention_scheme == 'BfromB':
+            self.num_encoders = num_behaviors
+            self.num_decoders = num_behaviors
 
         self.window_size = window_size
         self.num_fmaps = num_fmaps
@@ -55,7 +64,7 @@ class AttentionModelMini(torch.nn.Module):
         self.decoder_block = torch.nn.ModuleList()
         self.final_convs = torch.nn.ModuleList()
 
-        for _ in range(self.num_inputs):
+        for _ in range(self.num_encoders):
 
             encoder = torch.nn.ModuleList()
 
@@ -86,7 +95,7 @@ class AttentionModelMini(torch.nn.Module):
             device=self.device
         )
 
-        for _ in range(self.num_inputs):
+        for _ in range(self.num_decoders):
 
             decoder = torch.nn.ModuleList()
 
@@ -122,7 +131,7 @@ class AttentionModelMini(torch.nn.Module):
         }
 
         ### encoder block ###
-        for i in range(self.num_inputs):
+        for i in range(self.num_encoders):
 
             layer_input = inputs[:, i, :].unsqueeze(1)
 
@@ -158,7 +167,7 @@ class AttentionModelMini(torch.nn.Module):
 
         ### decoder block ###
         decoded_outputs = []
-        for i in range(self.num_inputs):
+        for i in range(self.num_decoders):
 
             decoder = self.decoder_block[i]
 
