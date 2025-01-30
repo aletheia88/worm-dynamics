@@ -13,9 +13,9 @@ import torch
 def build_model(
     architecture,
     attention_scheme,
-    depth=3,
-    num_neurons=3,
-    num_behaviors=3,
+    depth,
+    num_neurons,
+    num_behaviors,
     window_size=400,
     device='cuda:3'
 ):
@@ -78,7 +78,8 @@ def reconstruct_traces(
     experiment,
     num_worms,
     architecture,
-    num_neurons=3,
+    num_neurons,
+    num_behaviors,
     max_length=1600,
     window_size=400
 ):
@@ -107,6 +108,9 @@ def reconstruct_traces(
         } for worm_index in range(num_worms)
     }
 
+    if attention_scheme in ['BfromN', 'BfromB']:
+        loss_indices = list(range(num_neurons, num_neurons + num_behaviors))
+
     for i, (inputs, worm, start_frame, end_frame, ds) in tqdm(enumerate(dataloader)):
 
         append = False
@@ -128,11 +132,14 @@ def reconstruct_traces(
 
             targets = deepcopy(inputs)
             outputs, attn_weights = model(inputs)
-            recorded_neuron_indices = get_recorded_neuron_indices(targets,
-                                                                  num_neurons)
+
+            if attention_scheme in ['NfromN', 'NfromB']:
+                loss_indices = get_recorded_neuron_indices(targets, num_neurons)
+
             loss = reconstruction_loss(
-                    targets[:, recorded_neuron_indices, :],
-                    outputs[:, recorded_neuron_indices, :])
+                targets[:, loss_indices, :],
+                outputs[:, loss_indices, :]
+            )
 
             mask_outcomes = reconstructed_traces[worm_index]
             mask_outcomes['ground_truth'].append(targets.cpu().detach().numpy())

@@ -11,6 +11,7 @@ def test_model(
     ds_name,
     model_ckpt,
     experiment,
+    num_neurons,
     variables_to_reconstruct,
     # dictionary organized as {column_index: variable_name}
     device
@@ -19,7 +20,6 @@ def test_model(
     data_path = f'{prj_directory}/data/{ds_name}.npy'
     num_datasets, num_inputs, _ = np.load(data_path).shape
 
-    num_neurons = 3
     behavior_indices = list(variables_to_reconstruct.keys())
 
     model = build_model(architecture, attention_scheme, device=device)
@@ -31,6 +31,7 @@ def test_model(
         experiment,
         num_datasets,
         architecture,
+        num_neurons,
     )
     reconstruction_error = {}
     mse_loss = torch.nn.MSELoss()
