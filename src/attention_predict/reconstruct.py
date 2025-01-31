@@ -78,6 +78,7 @@ def reconstruct_traces(
     experiment,
     num_worms,
     architecture,
+    attention_scheme,
     num_neurons,
     num_behaviors,
     max_length=1600,
