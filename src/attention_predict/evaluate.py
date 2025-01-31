@@ -11,7 +11,9 @@ def test_model(
     ds_name,
     model_ckpt,
     experiment,
+    depth,
     num_neurons,
+    num_behaviors,
     variables_to_reconstruct,
     # dictionary organized as {column_index: variable_name}
     device
@@ -22,7 +24,14 @@ def test_model(
 
     behavior_indices = list(variables_to_reconstruct.keys())
 
-    model = build_model(architecture, attention_scheme, device=device)
+    model = build_model(
+        architecture,
+        attention_scheme,
+        depth,
+        num_neurons,
+        num_behaviors,
+        device=device
+    )
     dataloader = build_dataloader(ds_name, device)
     reconstructed_traces = reconstruct_traces(
         model,
@@ -31,7 +40,9 @@ def test_model(
         experiment,
         num_datasets,
         architecture,
+        attention_scheme,
         num_neurons,
+        num_behaviors,
     )
     reconstruction_error = {}
     mse_loss = torch.nn.MSELoss()
@@ -58,26 +69,3 @@ def test_model(
             reconstruction_error[ds_index][variable] = mse_loss(target, output).item()
 
     return reconstruction_error
-
-
-if __name__ == '__main__':
-
-    architecture = 'attention_model_1'
-    attention_scheme = 'BfromN'
-    ds_name = 'AVA_MC_SMDV_norm_eval'
-    model_ckpt = 600
-    experiment = 'exp_2024121100'
-    variables_to_reconstruct = {3: 'velocity', 4: 'pumping', 5: 'head_angle'}
-    device = 'cuda:2'
-
-    reconstruction_error = test_model(
-        architecture,
-        attention_scheme,
-        ds_name,
-        model_ckpt,
-        experiment,
-        variables_to_reconstruct,
-        device
-    )
-    print(reconstruction_error)
-
