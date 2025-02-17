@@ -74,7 +74,7 @@ def write_eval_data(ds_name):
     unique_valid = list(set(valid_ds).difference(train_ds))
     unique_test = list(set(test_ds).difference(train_ds))
 
-    eval_datasets = np.unique(unique_valid + unique_valid).tolist()
+    eval_datasets = np.unique(unique_valid + unique_test).tolist()
     np.save(f'{data_dir}/{ds_name}_raw_eval_ds.npy', eval_datasets)
 
     # initialize eval data
