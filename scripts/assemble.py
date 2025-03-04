@@ -4,6 +4,10 @@ import numpy as np
 
 def assemble_all(neuron_classes, behavior_index_dict, max_length=1600):
 
+    """ Create high-dimensional data arrays that contain the given neuron classes,
+    standard behaviors, body curvature angles and heat-stim.
+    """
+
     all_datasets = []
     noheatstim_datasets = []
 
