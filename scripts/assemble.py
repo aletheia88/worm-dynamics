@@ -73,9 +73,9 @@ def assemble_all(neuron_classes, behavior_index_dict, max_length=1600):
                 assembled_data[i, body_angle_indices, :] = body_angles
 
                 if ds in heatstim_datasets:
-                    assembled_data[i, -1, :] = heatstim_encoding
+                    assemble_data[i, -1, :] = heatstim_encoding
                 else:
-                    assembled_data[i, -1, :] = noheatstim_encoding
+                    assemble_data[i, -1, :] = noheatstim_encoding
 
     return assembled_data, unique_datasets
 
@@ -95,19 +95,24 @@ def assemble_std_beh(neuron_classes, behavior_index_dict, max_length=1600):
     for neuron_class in neuron_classes:
         noheatstim_outputs[neuron_class] = by_class(
                 neuron_class,
-                behs=['velocity', 'head_angle', 'pumping', 'body_angle'],
-                tag_filter=["stim"]
+                behs=['velocity', 'head_angle', 'pumping'],
+                tag_filter=['stim'],
+                LR_ops='random'
         ) # filter out heat-stim datasets
         all_outputs[neuron_class] = by_class(
                 neuron_class,
-                behs=['velocity', 'head_angle', 'pumping', 'body_angle']
+                behs=['velocity', 'head_angle', 'pumping'],
+                LR_ops='random'
         ) # contain both heat-stim and no-heat-stim datasets
         all_datasets += all_outputs[neuron_class]['datasets']
         noheatstim_datasets += noheatstim_outputs[neuron_class]['datasets']
 
     noheatstim_datasets = np.unique(noheatstim_datasets).tolist()
     unique_datasets = np.unique(all_datasets).tolist()
+    print(f'number of all_datasets: {len(all_datasets)}')
+    print(f'number of unique datasets: {len(unique_datasets)}')
     heatstim_datasets = [ds for ds in unique_datasets if ds not in noheatstim_datasets]
+    print(f'number of heat-stim datasets: {len(heatstim_datasets)}')
 
     num_behaviors = 3
     num_neurons = len(neuron_classes)
@@ -145,33 +150,53 @@ def assemble_std_beh(neuron_classes, behavior_index_dict, max_length=1600):
                 assembled_data[i, pumping_index, :] = behaviors['pumping'][ds_index]
                 assembled_data[i, head_index, :] = behaviors['head_angle'][ds_index]
 
+                # put heat-stim column immediately after neural columns
                 if ds in heatstim_datasets:
-                    assembled_data[i, -1, :] = heatstim_encoding
+                    assembled_data[i, num_neurons, :] = heatstim_encoding
                 else:
-                    assembled_data[i, -1, :] = noheatstim_encoding
+                    assembled_data[i, num_neurons, :] = noheatstim_encoding
 
     return assembled_data, unique_datasets
 
 
 if __name__ == '__main__':
     ### generating data with full set of behavioral variables
-    neuron_classes = ['SMDD', 'SAADL', 'SAADR', 'SAAV', 'M3', 'M4', 'MI', 'AVB', 'RIB',
-                      'RME', 'RMEV', 'RMED', 'URYD', 'URYV']
+    # neuron_classes = ['SMDD', 'SAADL', 'SAADR', 'SAAV', 'M3', 'M4', 'MI', 'AVB', 'RIB',
+    #                   'RME', 'RMEV', 'RMED', 'URYD', 'URYV']
     # neuron_classes = ['M3']
-    num_neurons = len(neuron_classes)
-    num_body_angles = 30
-    behavior_index_dict = {
-            'velocity': num_neurons,
-            'pumping': num_neurons + 1,
-            'head_angle': num_neurons + 2,
-            'body_angles': list(range(num_neurons+3, num_neurons+3+num_body_angles))
-    }
+    # num_neurons = len(neuron_classes)
+    # num_body_angles = 30
+    # behavior_index_dict = {
+    #         # heat-stim goes first
+    #         'velocity': num_neurons + 1,
+    #         'pumping': num_neurons + 2,
+    #         'head_angle': num_neurons + 3,
+    #         'body_angles': list(range(num_neurons+3, num_neurons+3+num_body_angles))
+    # }
     ### generating data with only standard behaviors
     # neuron_classes = ['AVA']
     # num_neurons = 1
-    # behavior_index_dict = {'velocity': 1, 'pumping': 2, 'head_angle': 3}
-    assembled_data, unique_datasets = assemble_std_beh(neuron_classes, behavior_index_dict)
 
+    fig4_neuron_classes = [
+        "AVB", "RIB", "RIC", "RID", "AUA", "AVJ", "AVK", "AIM", "AIY", "AIA",
+        "AVA", "AVE", "AIB", "RIM", "AVL", "RIF", "RIV", "ADA", "AVD", "RMF",
+        "RIA", "AVH", "RIR", "RIS", "RIH", "AIN", "RIP", "AIZ", "URB", "ALA",
+        "RMG", "RMD", "RMDD", "RMDV", "RME", "RMEV", "RMED", "SAADL", "SAADR",
+        "SAAV", "SMBV", "SMBD", "SMDV", "SMDD", "SIAV", "SIAD", "SIBV", "SIBD",
+        "VB02", "ASJ", "IL1L", "IL1R", "IL1D", "IL1V", "URYD", "URYV", "BAG",
+        "ASG", "CEPD", "CEPV", "OLL", "OLQD", "OLQV", "IL2L", "IL2R", "IL2D",
+        "IL2V", "URAD", "URAV", "ADE", "FLP", "AQR", "URX", "ADL", "ASH",
+        "ASEL", "ASER", "ASI", "AFD", "ASK", "AWA", "AWB", "AWC", "I1",
+        "I2", "I3", "I4", "I5", "I6", "NSM", "M1", "M3", "M4", "M5", "MC", "MI"
+    ]
+    num_neurons = len(fig4_neuron_classes)
+    behavior_index_dict = {
+            'velocity': num_neurons + 1,
+            'pumping': num_neurons + 2,
+            'head_angle': num_neurons + 3
+    }
+    assembled_data, unique_datasets = assemble_std_beh(
+            fig4_neuron_classes,
+            behavior_index_dict)
     print(f'assembled_data: {assembled_data.shape}')
     print(f'unique datasets: {len(unique_datasets)}')
-
