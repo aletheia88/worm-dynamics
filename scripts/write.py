@@ -1,4 +1,4 @@
-from assemble import assemble_all
+from assemble import assemble_all, assemble_std_beh
 from copy import deepcopy
 import numpy as np
 
@@ -6,7 +6,11 @@ import numpy as np
 def write_raw_data(ds_name, neuron_classes, behavior_index_dict):
 
     data_dir = '/home/alicia/store1/alicia/attention_predict/data'
-    assembled_data, datasets = assemble_all(neuron_classes, behavior_index_dict)
+    ### TODO: someday incorporate back the body angles
+    assembled_data, datasets = assemble_std_beh(
+            neuron_classes,
+            behavior_index_dict
+        )
     np.save(f'{data_dir}/{ds_name}_raw.npy', assembled_data)
     np.save(f'{data_dir}/{ds_name}_raw_ds.npy', datasets)
     print(f'dataset {ds_name}_raw saved!')
@@ -14,26 +18,28 @@ def write_raw_data(ds_name, neuron_classes, behavior_index_dict):
 
 def split_train_valid_test(
     ds_name,
+    random_seed,
     split_ratio=[0.7, 0.2, 0.1],
-    random_seed=42,
     save=True
 ):
     data_dir = '/home/alicia/store1/alicia/attention_predict/data'
-
     data = np.load(f'{data_dir}/{ds_name}_raw.npy')
     datasets = np.load(f'{data_dir}/{ds_name}_raw_ds.npy')
     num_datasets = data.shape[0]
 
-    train_size = int(num_datasets * split_ratio[0])
-    valid_size = int(num_datasets * split_ratio[1])
-    test_size = num_datasets - train_size - valid_size
+    # train_size = int(num_datasets * split_ratio[0])
+    # valid_size = int(num_datasets * split_ratio[1])
+    # test_size = num_datasets - train_size - valid_size
+    train_size = 64
+    valid_size = 16
+    test_size = 20
     print(f'Splits: {train_size, valid_size, test_size}')
 
     np.random.seed(random_seed)
     indices = np.random.choice(num_datasets, num_datasets, replace=False)
 
     train_indices = indices[:train_size]
-    valid_indices = indices[train_size:train_size+valid_size]
+    valid_indices = indices[train_size:train_size + valid_size]
     test_indices = indices[-test_size:]
 
     train_set = data[train_indices, :, :]
@@ -52,7 +58,7 @@ def split_train_valid_test(
         np.save(f'{data_dir}/{ds_name}_raw_train_ds.npy', train_datasets)
         np.save(f'{data_dir}/{ds_name}_raw_valid_ds.npy', valid_datasets)
         np.save(f'{data_dir}/{ds_name}_raw_test_ds.npy', test_datasets)
-        print(f'Train/Valid/Test splits for {ds_name}_raw saved!')
+        print(f'train, valid, test splits for {ds_name}_raw saved!')
     else:
         return train_set, valid_set, test_set
 
@@ -132,7 +138,7 @@ def write_shuffled_data(ds_name, num_neurons, random_seed, shuffle_type):
     print(f'Shuffled {ds_name} saved!')
 
 
-if __name__ == "__main__":
+def create_ds_data0108(random_seed):
 
     ds_name = 'data0108'
     neuron_classes = [
@@ -151,5 +157,133 @@ if __name__ == "__main__":
         'body_angles': list(range(num_neurons+3, num_neurons+3+num_body_angles))
     }
     write_raw_data(ds_name, neuron_classes, behavior_index_dict)
-    split_train_valid_test(ds_name, random_seed=2025)
+    split_train_valid_test(ds_name, random_seed)
     write_eval_data(ds_name)
+
+
+def create_ds_data0306(random_seed):
+
+    ds_name = 'data0306'
+    neuron_classes = [
+        'SMDV', 'SMDD', 'SAADL', 'SAADR', 'SAAV',
+        'MC', 'M3', 'M4', 'MI',
+        'AVA', 'AVB', 'RIB',
+        'RME', 'RMEV', 'RMED',
+        'URYD', 'URYV'
+    ]
+    num_neurons = len(neuron_classes)
+    behavior_index_dict = {
+        'velocity': num_neurons,
+        'pumping': num_neurons + 1,
+        'head_angle': num_neurons + 2,
+    }
+    write_raw_data(ds_name, neuron_classes, behavior_index_dict)
+    split_train_valid_test(ds_name, random_seed, split_ratio=[0.7, 0, 0.3])
+
+
+def create_ds_data0310(random_seed):
+    ds_name = 'data0310'
+    neuron_classes = [
+        'SMDV', 'SMDD', 'SAADL', 'SAADR', 'SAAV',
+        'MC', 'M3', 'M4', 'MI',
+        'AVA', 'AVB', 'RIB',
+        'RME', 'RMEV', 'RMED',
+        'URYD', 'URYV'
+    ]
+    num_neurons = len(neuron_classes)
+    behavior_index_dict = {
+        'velocity': num_neurons + 1,
+        'pumping': num_neurons + 2,
+        'head_angle': num_neurons + 3,
+    }
+    write_raw_data(ds_name, neuron_classes, behavior_index_dict)
+    split_train_valid_test(ds_name, random_seed, split_ratio=[0.7, 0, 0.3])
+
+
+def create_ds_data0327(random_seed):
+    ds_name = 'data0327'
+    neuron_classes = [
+        'SMDV', 'SMDD', 'SAADL', 'SAADR', 'SAAV',
+        'MC', 'M3', 'M4', 'MI',
+        'AVA', 'AVB', 'RIB',
+        'RME', 'RMEV', 'RMED',
+        'URYD', 'URYV'
+    ]
+    num_neurons = len(neuron_classes)
+    behavior_index_dict = {
+        'velocity': num_neurons + 1,
+        'pumping': num_neurons + 2,
+        'head_angle': num_neurons + 3,
+    }
+    write_raw_data(ds_name, neuron_classes, behavior_index_dict)
+    split_train_valid_test(ds_name, random_seed)
+
+
+def create_ds_data0410(random_seed):
+    ds_name = 'data0410'
+    fig4_neuron_classes = [
+        "AVB", "RIB", "RIC", "RID", "AUA", "AVJ", "AVK", "AIM", "AIY", "AIA",
+        "AVA", "AVE", "AIB", "RIM", "AVL", "RIF", "RIV", "ADA", "AVD", "RMF",
+        "RIA", "AVH", "RIR", "RIS", "RIH", "AIN", "RIP", "AIZ", "URB", "ALA",
+        "RMG", "RMD", "RMDD", "RMDV", "RME", "RMEV", "RMED", "SAADL", "SAADR",
+        "SAAV", "SMBV", "SMBD", "SMDV", "SMDD", "SIAV", "SIAD", "SIBV", "SIBD",
+        "VB02", "ASJ", "IL1L", "IL1R", "IL1D", "IL1V", "URYD", "URYV", "BAG",
+        "ASG", "CEPD", "CEPV", "OLL", "OLQD", "OLQV", "IL2L", "IL2R", "IL2D",
+        "IL2V", "URAD", "URAV", "ADE", "FLP", "AQR", "URX", "ADL", "ASH",
+        "ASEL", "ASER", "ASI", "AFD", "ASK", "AWA", "AWB", "AWC", "I1",
+        "I2", "I3", "I4", "I5", "I6", "NSM", "M1", "M3", "M4", "M5", "MC", "MI"
+    ]
+    neuron_count = {}
+    data = np.load('/store1/alicia/attention_predict/data/data0409_raw_train.npy')
+    num_datasets, num_inputs, _ = data.shape
+    for neuron_index in range(len(fig4_neuron_classes)):
+        neuron_type = fig4_neuron_classes[neuron_index]
+        neuron_count[neuron_type] = 0
+        for ds_index in range(num_datasets):
+            sequence = data[ds_index, neuron_index, :]
+            if np.max(sequence) == np.min(sequence) == 0:
+                continue
+            # otherwise this neuron is recorded
+            else:
+                neuron_count[neuron_type] += 1
+    print(neuron_count)
+    # filter neuron classes based on number of datasets in which they are recorded
+    neuron_classes = []
+    min_count = 30
+    for neuron_type, count in neuron_count.items():
+        if count >= min_count:
+            neuron_classes.append(neuron_type)
+    print(f'neuron classes: {neuron_classes}')
+    # num_neurons = len(neuron_classes)
+    # behavior_index_dict = {
+    #         'velocity': num_neurons + 1,
+    #         'pumping': num_neurons + 2,
+    #         'head_angle': num_neurons + 3
+    # }
+    # write_raw_data(ds_name, neuron_classes, behavior_index_dict)
+    # split_train_valid_test(ds_name, random_seed)
+
+
+def create_ds_sanity(random_seed):
+    ds_name = 'sanity'
+    neuron_classes = ['AVA']
+    behavior_index_dict = {
+        'velocity': 1,
+        'pumping': 2,
+        'head_angle': 3,
+    }
+    write_raw_data(ds_name, neuron_classes, behavior_index_dict)
+    split_train_valid_test(
+        ds_name,
+        random_seed,
+        split_ratio=[0.7, 0, 0.3]
+    )
+
+
+if __name__ == "__main__":
+    # create_ds_data0108(2025)
+    # create_ds_sanity(2025)
+    # create_ds_data0310(1985)
+    # create_ds_data0327(2001)
+    # create_ds_data0409(2025)
+    create_ds_data0410(2025)
