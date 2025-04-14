@@ -62,13 +62,15 @@ def reconstruct_traces(
     num_worms,
     num_neurons,
     num_behaviors,
+    device,
     max_length=1600,
     window_size=400
 ):
-    model_ckpt_path = f'/store1/alicia/attention_predict/{experiment}/checkpoints/model_ckpt{ckpt}.pt'
+    model_ckpt_path = \
+        f'/store1/alicia/attention_predict/{experiment}/model_ckpt{ckpt}.pt'
 
     # load trained model
-    checkpoint = torch.load(model_ckpt_path)
+    checkpoint = torch.load(model_ckpt_path, map_location=device)
     model.load_state_dict(checkpoint['state_dict'])
     model.eval()
 
