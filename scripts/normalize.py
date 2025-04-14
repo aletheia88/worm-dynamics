@@ -9,24 +9,25 @@ def write_normalized_data(ds_name, num_behaviors, tfm_type='zscore'):
     new_ds_name = ds_name + '_norm'
     data_dir = '/home/alicia/store1/alicia/attention_predict/data'
 
-    for ds_type in ['train', 'eval']:
+    for ds_type in ['train', 'valid', 'test']:
 
         data = np.load(f'{data_dir}/{ds_name}_raw_{ds_type}.npy')
         # data shape: (num_datasets, num_inputs, length)
         num_inputs = data.shape[1]
         num_neurons = num_inputs - num_behaviors
-        print(f'num neurons: {num_neurons}')
+        print(f'num neurons: {num_neurons}') # count "heat-stim" as one of the neurons
         datasets = np.load(f'{data_dir}/{ds_name}_raw_{ds_type}_ds.npy')
 
         if tfm_type == 'zscore':
-            # ignore the last column that artificially expresses heat-stim
-            for i in range(num_inputs - 1):
+            for i in range(num_inputs):
 
-                if i > num_neurons:
+                if i > num_neurons - 1:
                     mean = tfm_params[i]['mu']
                     stddev = tfm_params[i]['sigma']
                     data[:, i, :] = (data[:, i, :] - mean) / stddev
-                else:
+
+                # ignore the heat-stim column indexed at 'num_neurons - 1' 
+                elif i < num_neurons - 1:
                     for ds_index in range(len(datasets)):
                         # set missing neuron activity to -10
                         if np.min(data[ds_index, i, :]) == np.max(data[ds_index, i, :]) == 0:
@@ -40,7 +41,6 @@ def write_normalized_data(ds_name, num_behaviors, tfm_type='zscore'):
 
         np.save(f'{data_dir}/{new_ds_name}_{ds_type}.npy', data)
         np.save(f'{data_dir}/{new_ds_name}_{ds_type}_ds.npy', datasets)
-
         print(f'Normalized data {new_ds_name}_{ds_type} is written!')
 
 
@@ -51,16 +51,17 @@ def get_zscore_tfm_params(ds_name, num_behaviors):
 
     num_datasets, num_inputs, _ = raw_data.shape
     num_neurons = num_inputs - num_behaviors
-    tfm_params = {i: {'mu': None, 'sigma': None} for i in range(num_inputs - 1)}
+    tfm_params = {i: {'mu': None, 'sigma': None} for i in range(num_inputs)}
 
-    for i in range(num_inputs - 1):
-
+    for i in range(num_inputs):
         # get traces of variable i
         variable_traces = raw_data[:, i, :]
         filtered_traces = []
         # variable_traces shape: (num_datasets, length)
         # if the variable is a neuron
-        if i < num_neurons:
+        if i == num_neurons - 1:
+            continue
+        elif i < num_neurons - 1: # minus 1 to exclude the heat-stim column
             # remove the missing neurons in each animal
             for ds_index in range(num_datasets):
 
@@ -105,8 +106,10 @@ def get_linear_tfm_params(ds_name, upper_percentile=100, lower_percentile=0):
 
 if __name__ == '__main__':
 
-    ds_name = 'data0108'
-    num_behaviors = 34 # 34 = 3 (cepnem beh) + 30 (body angles) + 1 (heat-stim)
-    tfm_params = get_zscore_tfm_params(ds_name, num_behaviors)
-    print(tfm_params)
+    # ds_name = 'data0108'
+    # num_behaviors = 34 # 34 = 3 (cepnem beh) + 30 (body angles) + 1 (heat-stim)
+    ds_name = 'data0327'
+    num_behaviors = 3
     write_normalized_data(ds_name, num_behaviors)
+    # tfm_params = get_zscore_tfm_params(ds_name, num_behaviors)
+    # print(tfm_params)
