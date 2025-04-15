@@ -9,30 +9,23 @@ import torch
 
 
 def build_mini_attention_model(
-    attention_scheme,
-    depth,
-    num_neurons,
-    num_behaviors,
-    window_size,
-    num_fmaps,
-    device
+    attention_scheme, depth, num_neurons, num_behaviors, window_size, num_fmaps, device
 ):
     return AttentionModelMini(
-            depth,
-            num_neurons,
-            num_behaviors,
-            attention_scheme,
-            window_size,
-            num_fmaps,
-            device=device
-        )
+        depth,
+        num_neurons,
+        num_behaviors,
+        attention_scheme,
+        window_size,
+        num_fmaps,
+        device=device,
+    )
 
 
 def build_dataloader(ds_name, device):
-
-    prj_directory = '/store1/alicia/attention_predict'
-    data_path = f'{prj_directory}/data/{ds_name}.npy'
-    dataset_path = f'{prj_directory}/data/{ds_name}_ds.npy'
+    prj_directory = "/store1/alicia/attention_predict"
+    data_path = f"{prj_directory}/data/{ds_name}.npy"
+    dataset_path = f"{prj_directory}/data/{ds_name}_ds.npy"
 
     dataset = CElegansDatasetPlus(
         data_path,
@@ -40,13 +33,9 @@ def build_dataloader(ds_name, device):
         window_stride=400,
         window_size=400,
         device=device,
-        slices=slice(0, 1600)
+        slices=slice(0, 1600),
     )
-    dataloader = torch.utils.data.DataLoader(
-        dataset,
-        batch_size=1,
-        shuffle=False
-    )
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=False)
     # shuffle must set to False to reconstruct trace
 
     return dataloader
@@ -64,40 +53,41 @@ def reconstruct_traces(
     num_behaviors,
     device,
     max_length=1600,
-    window_size=400
+    window_size=400,
 ):
-    model_ckpt_path = \
-        f'/store1/alicia/attention_predict/{experiment}/model_ckpt{ckpt}.pt'
+    model_ckpt_path = (
+        f"/store1/alicia/attention_predict/{experiment}/model_ckpt{ckpt}.pt"
+    )
 
     # load trained model
     checkpoint = torch.load(model_ckpt_path, map_location=device)
-    model.load_state_dict(checkpoint['state_dict'])
+    model.load_state_dict(checkpoint["state_dict"])
     model.eval()
 
     left_slider = 0
     right_slider = 0
 
     reconstructed_traces = {
-        worm_index: { 
-            'dataset': None,
+        worm_index: {
+            "dataset": None,
             **{
-                'inputs': [],
-                'ground_truth': [],
-                'prediction': [],
-                'attn_weights': [],
-                'frames': [],
-            }
-        } for worm_index in range(num_worms)
+                "inputs": [],
+                "ground_truth": [],
+                "prediction": [],
+                "attn_weights": [],
+                "frames": [],
+            },
+        }
+        for worm_index in range(num_worms)
     }
 
     neuron_indices = list(range(num_neurons))
     behavior_indices = list(range(num_neurons, num_neurons + num_behaviors))
 
     for i, (inputs, worm, start_frame, end_frame, ds) in tqdm(enumerate(dataloader)):
-
         append = False
         worm_index = worm.item()
-        reconstructed_traces[worm_index]['dataset'] = ds[0]
+        reconstructed_traces[worm_index]["dataset"] = ds[0]
 
         if start_frame.item() == right_slider:
             append = True
@@ -111,24 +101,22 @@ def reconstruct_traces(
             right_slider = 0
 
         if append:
-
-            if attention_scheme == 'BfromN':
+            if attention_scheme == "BfromN":
                 outputs, attention_weights = model(inputs[:, neuron_indices, :])
                 targets = inputs[:, behavior_indices, :]
-            elif attention_scheme == 'NfromB':
+            elif attention_scheme == "NfromB":
                 outputs, attention_weights = model(inputs[:, behavior_indices, :])
                 targets = inputs[:, neuron_indices, :]
-            elif attention_scheme == 'NfromN':
+            elif attention_scheme == "NfromN":
                 outputs, attention_weights = model(inputs[:, neuron_indices, :])
                 targets = inputs[:, neuron_indices, :]
 
             mask_outcomes = reconstructed_traces[worm_index]
-            mask_outcomes['inputs'].append(inputs.cpu().detach().numpy())
-            mask_outcomes['ground_truth'].append(targets.cpu().detach().numpy())
-            mask_outcomes['prediction'].append(outputs.cpu().detach().numpy())
-            mask_outcomes['frames'].append((start_frame.item(),
-                                            end_frame.item()))
-            mask_outcomes['attn_weights'].append(
+            mask_outcomes["inputs"].append(inputs.cpu().detach().numpy())
+            mask_outcomes["ground_truth"].append(targets.cpu().detach().numpy())
+            mask_outcomes["prediction"].append(outputs.cpu().detach().numpy())
+            mask_outcomes["frames"].append((start_frame.item(), end_frame.item()))
+            mask_outcomes["attn_weights"].append(
                 [attn.cpu().detach().numpy() for attn in attention_weights]
             )
 
