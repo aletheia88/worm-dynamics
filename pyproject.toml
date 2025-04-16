@@ -7,12 +7,14 @@ requires-python = ">=3.12"
 dependencies = [
     "numpy>=2.2.4",
     "torch>=2.6.0",
-# Data handling
+    # Data handling
     "h5py>=3.13.0",
     "pyarrow>=19.0.1",
-# Utils
+    # Utils
     "tqdm>=4.67.1",
     "flv-utils",
+    "jaxtyping>=0.3.1",
+    "einops>=0.8.1",
 ]
 
 [dependency-groups]
@@ -35,10 +37,12 @@ cpu = [
 ]
 cuda = [
   "torch>=2.6.0",
+  "triton>=3.2.0",
 ]
 rocm = [
   "torch>=2.6.0",
   "pytorch-triton-rocm",
+  "triton>=3.2.0",
 ]
 
 [tool.uv]

@@ -74,7 +74,7 @@ class AttentionModelMini(torch.nn.Module):
         ]
 
         self.encoders_by_level = nn.Sequential(
-            ConvBlock(
+            ConvBlock( # adjust this so it has a registered buffer + returns a tuple == (output, hidden)
                 *encoder_features[level],
                 self.kernel_size,
                 self.num_encoders,  # number of groups == number of input channels
@@ -145,11 +145,6 @@ class AttentionModelMini(torch.nn.Module):
             conv_out = encoder[-1](layer_input)
             level_outputs[self.depth - 1].append(conv_out.view(num_samples, 1, -1))
 
-        # level_outputs[level][i]: (num_samples, 1, embedding_dims)
-
-        # concatenate level outputs of all variables
-        for level in range(self.depth):
-            level_outputs[level] = torch.concatenate(level_outputs[level], axis=1)
 
         ### attention block ###
         # attention_weights: (num_samples, num_inputs, num_inputs)
