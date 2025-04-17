@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from .attention_mini import AttentionBlockMini
-from .unet import Downsample, ConvBlock, OutputConv
+from .unet import ConvBlock
 
 
 class AttentionModelMini(torch.nn.Module):
@@ -15,7 +15,8 @@ class AttentionModelMini(torch.nn.Module):
         depth: int,
         num_neurons: int,
         num_behaviors: int,
-        attention_scheme: str,
+        input_dims: tuple[int, int, int],
+        attention_scheme: tuple[str, str],
         window_size: int,
         num_fmaps: int = 8,
         fmap_inc_factor: int = 2,
@@ -23,174 +24,98 @@ class AttentionModelMini(torch.nn.Module):
         padding: str = "same",
         downsample_factor: int = 2,
         upsample_mode: str = "nearest",
-        final_activation: torch.nn.Module = nn.Identity(),
-        device: str = "cpu",
+        final_act: torch.nn.Module = nn.Identity(),
     ):
         super().__init__()
 
-        self.depth = depth
+        N, C, L = input_dims
 
-        # Couldn't you just infer these values from input tensor dims?
-        # Named tensor dims + nested tensors could be useful here, too
-        if attention_scheme == "BfromN":
-            self.num_encoders = num_neurons
-            self.num_decoders = num_behaviors
-
-        elif attention_scheme == "NfromB":
-            self.num_encoders = num_behaviors
-            self.num_decoders = num_neurons
-
-        elif attention_scheme == "NfromN":
-            self.num_encoders = num_neurons
-            self.num_decoders = num_neurons
-
-        elif attention_scheme == "BfromB":
-            self.num_encoders = num_behaviors
-            self.num_decoders = num_behaviors
-
-        self.input_channels = num_neurons + num_behaviors
-        self.window_size = window_size
-        self.num_fmaps = num_fmaps
-        self.fmap_inc_factor = fmap_inc_factor
         self.kernel_size = kernel_size
         self.padding = padding
-        self.downsample_factor = downsample_factor
-        self.upsample_mode = upsample_mode
-        self.final_activation = final_activation
-        self.device = device
+        self.num_fmaps = num_fmaps
+        self.fmap_inc_factor = fmap_inc_factor
 
-        self.downsample = Downsample(self.downsample_factor, ndim=1)
-        self.upsample = nn.Upsample(
-            scale_factor=self.downsample_factor, mode=self.upsample_mode
-        )
-        self.decoder_block = nn.ModuleList()
-        self.final_convs = nn.ModuleList()
+        scheme_map = {
+            "neurons": num_neurons,
+            "behaviors": num_behaviors,
+            "all": C,
+        }
 
-        encoder_features = [
-            self.compute_fmaps_encoder(level) for level in range(self.depth)
-        ]
-        decoder_features = [
-            self.compute_fmaps_decoder(level) for level in range(self.depth - 1)
-        ]
-
-        self.encoders_by_level = nn.Sequential(
-            ConvBlock( # adjust this so it has a registered buffer + returns a tuple == (output, hidden)
-                *encoder_features[level],
-                self.kernel_size,
-                self.num_encoders,  # number of groups == number of input channels
-                self.padding,
-            )
-            for level in range(self.depth)
-        )
-
-        self.decoders_by_level = nn.Sequential(
-                 *encoder_features[level],
-                self.kernel_size,
-                self.num_encoders,  # number of groups == number of input channels
-                self.padding,
-        )
-
-            for level in range(self.depth - 1):
-                fmaps_in, fmaps_out = self.compute_fmaps_decoder(level)
-                decoder.append(
-                    ConvBlock(
-                        fmaps_in, fmaps_out, self.kernel_size, self.padding, ndim=1
-                    )
-                )
-            self.decoder_block.append(decoder)
-
-            self.final_convs.append(
-                OutputConv(
-                    self.compute_fmaps_decoder(0)[1],
-                    1,
-                    self.input_channels,
-                    activation=self.final_activation,
-                    ndim=1,
-                )
-            )
+        attn_from, attn_to = attention_scheme
+        self.num_encoders = scheme_map[attn_from]
+        self.num_decoders = scheme_map[attn_to]
 
         self.length = self.window_size // (2 ** (self.depth - 1))
+        encoder_features = self.encoder_pass_features(depth)
+        decoder_features = self.decoder_pass_features(depth)
         embedding_dims = self.length * encoder_features[-1][1]
 
-        self.attention_block = AttentionBlockMini(
-            embedding_dims,
-            num_neurons,
-            num_behaviors,
-            attention_scheme,
-            device=self.device,
+        # TODO: initialize with torch.zeros and correct dims
+        self.register_buffer(
+            "skip_connections", torch.nested.nested_tensor([...], layout=torch.jagged)
         )
 
+        self.model = nn.Sequential()
+
+        # Build encoder pass
+        for level, (in_channels, out_channels) in enumerate(encoder_features):
+            self.model.append(
+                ConvBlock(
+                    in_channels,
+                    out_channels,
+                    self.kernel_size,
+                    self.padding,
+                    self.num_encoders,
+                )
+            )
+            # Forward pass hook to cache each block's output
+            self.model[-1].register_forward_pass_hook(self.generate_output_hook(level))
+            # Downsample
+            self.model.append(nn.MaxPool1d(downsample_factor))
+
+        # Attention block
+        self.model.append(
+            AttentionBlockMini(
+                embedding_dims,
+                (attn_from, attn_to),  # Attention scheme
+                N,
+                control_experiment=True,
+            )
+        )
+
+        # Build decoder pass
+        for level, (in_channels, out_channels) in enumerate(decoder_features):
+            self.model.append(
+                nn.Upsample(scale_factor=downsample_factor, mode=upsample_mode)
+            )
+            # Forward pass hook to hcat skip connection tensor with upsampled output
+            self.model[-1].register_forward_pass_hook(self.generate_input_hook(level))
+            self.model.append(
+                ConvBlock(
+                    in_channels,
+                    out_channels,
+                    self.kernel_size,
+                    self.padding,
+                    self.num_decoders,
+                )
+            )
+
+        # Output convolution
+        self.model.append(
+            nn.Conv1d(
+                decoder_features[-1][1],
+                self.num_decoders,
+                1,
+                padding=0,
+                groups=self.num_decoders,
+            )
+        )
+        self.model.append(final_act)
 
     def forward(self, inputs):
-        num_samples = inputs.shape[0]
-        # outputs per level and variable
-        level_outputs = {level: [] for level in range(self.depth)}
+        return self.model(inputs)  # 😂
 
-        ### encoder block ###
-        # no need for outer loop or subsequent concatenation here
-        for i in range(self.num_encoders):
-            layer_input = inputs[:, i, :].unsqueeze(1)
-
-            # get the encoder for variable i
-            encoder = self.encoder_block[i]
-
-            # go down the levels of the U-Net
-            for level in range(self.depth - 1):
-                conv_out = encoder[level](layer_input)
-                level_outputs[level].append(conv_out.view(num_samples, 1, -1))
-                downsampled = self.downsample(conv_out)
-                layer_input = downsampled
-
-            # lowest level of the U-Net
-            conv_out = encoder[-1](layer_input)
-            level_outputs[self.depth - 1].append(conv_out.view(num_samples, 1, -1))
-
-
-        ### attention block ###
-        # attention_weights: (num_samples, num_inputs, num_inputs)
-        # attention_outputs: (num_samples, num_inputs, embedding_dims)
-        level_attention_outputs = []
-        for level in range(self.depth):
-            attention_outputs, attention_weights = self.attention_block(
-                level_outputs[level]
-            )
-            level_attention_outputs.append(attention_outputs)
-
-        # level_attention_outputs[level]: (num_samples, num_inputs, embedding_dims(level))
-
-        ### decoder block ###
-        decoded_outputs = []
-        for i in range(self.num_decoders):
-            decoder = self.decoder_block[i]
-
-            # go up the levels of the U-Net
-            for level in range(0, self.depth)[::-1]:
-                _, fmaps_out = self.compute_fmaps_encoder(level)
-                level_input = level_attention_outputs[level][:, i, :].unsqueeze(1)
-                # level_input: (num_samples, 1, embedding_dims(level))
-                # if lowest level
-                if level == self.depth - 1:
-                    level_input = level_input.view(
-                        num_samples, self.compute_fmaps_encoder(level)[1], -1
-                    )
-                    prev_level_output = level_input
-                    continue
-
-                # reshape into (..., channels, length)
-                level_input = level_input.view(num_samples, fmaps_out, -1)
-                upsampled = self.upsample(prev_level_output)
-                # concatenate channels
-                decoder_input = torch.concatenate([level_input, upsampled], axis=1)
-                prev_level_output = decoder[level](decoder_input)
-
-            final_output = self.final_convs[i](prev_level_output)
-            decoded_outputs.append(final_output)
-
-        model_outputs = torch.cat(decoded_outputs, 1).to(self.device)
-
-        return model_outputs, attention_weights
-
-    def compute_fmaps_encoder(self, level: int) -> tuple[int, int]:
+    def encoder_fmap(self, level: int) -> tuple[int, int]:
         """Compute the number of input and output feature maps for
         a conv block at a given level of the UNet encoder (left side).
 
@@ -211,7 +136,7 @@ class AttentionModelMini(torch.nn.Module):
         fmaps_out = self.num_fmaps * self.fmap_inc_factor**level
         return fmaps_in, fmaps_out
 
-    def compute_fmaps_decoder(self, level: int) -> tuple[int, int]:
+    def decoder_fmap(self, level: int) -> tuple[int, int]:
         """Compute the number of input and output feature maps for a conv block
         at a given level of the UNet decoder (right side). Note:
         The bottom layer (depth - 1) is considered an "encoder" conv pass,
@@ -226,7 +151,25 @@ class AttentionModelMini(torch.nn.Module):
             of the decoder convolutional pass in the given level.
         """
         fmaps_out = self.num_fmaps * self.fmap_inc_factor ** (level)
-        concat_fmaps = self.compute_fmaps_encoder(level)[1]
+        concat_fmaps = self.encoder_fmap(level)[1]
         # The channels that come from the skip connection
         fmaps_in = concat_fmaps + self.num_fmaps * self.fmap_inc_factor ** (level + 1)
         return fmaps_in, fmaps_out
+
+    def encoder_pass_features(self, depth: int):
+        return [self.encoder_fmap(level) for level in range(depth)]
+
+    def decoder_pass_features(self, depth: int):
+        return [self.decoder_fmap(level) for level in reversed(range(depth - 1))]
+
+    def generate_output_hook(self, level):
+        def hook(module, args, output):
+            self.skip_connections[level] = output
+
+        return hook
+
+    def generate_input_hook(self, level):
+        def hook(module, args, output):
+            return torch.hcat(output, self.skip_connections[level])
+
+        return hook
