@@ -13,11 +13,13 @@
 # License Information:
 # The original code from which this script is derived is subject to the terms of the MIT
 # license, as stated in the repository.
-import torch
+from torch import Tensor
 import torch.nn as nn
 
 
 class ConvBlock(nn.Module):
+    conv_pass: nn.Sequential
+
     def __init__(
         self,
         in_channels: int,
@@ -25,7 +27,7 @@ class ConvBlock(nn.Module):
         kernel_size: int,
         padding: str,
         num_groups: int,
-    ):
+    ) -> None:
         """A convolution block for a U-Net. Contains two convolutions, each followed by
             a ReLU.
 
@@ -66,5 +68,5 @@ class ConvBlock(nn.Module):
             nn.ReLU(),
         )
 
-    def forward(self, x):
+    def forward(self, x) -> Tensor:
         return self.conv_pass(x)
