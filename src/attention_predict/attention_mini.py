@@ -20,19 +20,20 @@ class AttentionBlockMini(nn.Module):
     Q_weights: nn.Sequential
     V_weights: nn.Linear
     spda: Callable[[Tensor, Tensor, Tensor], Tensor | Tuple[Tensor, Tensor]]
+    batch_size: int
 
     def __init__(
         self,
         embedding_L: int,
-        attention_scheme: Tuple[int, int],
+        attention_dims: Tuple[int, int],
         N: int,
         self_attention: bool = False,
         control_experiment: bool = True,
     ) -> None:
         super().__init__()
-        # All possible attention schemes can be expressed with a tuple of ints.
-        # ex. "NfromB" = (fromB: int, toN: int)
-        from_dim, to_dim = attention_scheme
+
+        self.batch_size = N
+        from_dim, to_dim = attention_dims
 
         # mask_mod: returns False for indices of the attention mask that should be skipped
         # score_mod: makes a copy of the attention_matrix and returns the unmodified matrix
@@ -78,7 +79,7 @@ class AttentionBlockMini(nn.Module):
     def forward(self, inputs: Tensor) -> Tensor | Tuple[Tensor, Tensor]:
         K_weighted = self.K_weights(self.KQ)
         Q_weighted = self.Q_weights(self.KQ)
-        V_weighted = self.V_weights(inputs)
+        V_weighted = self.V_weights(inputs.view(self.batch_size, -1))
         return self.sdpa(Q_weighted, K_weighted, V_weighted)
 
     def generate_mask_mod(self) -> Callable[[Tensor, Tensor, Tensor, Tensor], Tensor]:

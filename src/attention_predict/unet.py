@@ -46,7 +46,7 @@ class ConvBlock(nn.Module):
         conv1 = nn.Conv1d(
             in_channels,
             out_channels,
-            kernel_size=kernel_size,
+            kernel_size,
             padding=padding,
             groups=num_groups,
         )
