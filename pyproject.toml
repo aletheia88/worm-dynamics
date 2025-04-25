@@ -7,47 +7,43 @@ name = "attention-predict"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 dependencies = [
-    "numpy>=2.2.4",
-    "torch>=2.6.0",
+    "numpy",
     # Data handling
-    "h5py>=3.13.0",
-    "pyarrow>=19.0.1",
+    "h5py",
+    "pyarrow",
     # Utils
-    "tqdm>=4.67.1",
+    "tqdm",
     "flv-utils",
-    "jaxtyping>=0.3.1",
-    "einops>=0.8.1",
+    "jaxtyping",
+    "einops",
 ]
 
 [dependency-groups]
 dev = [
     # Interactive plotting
-    "altair>=5.5.0",
-    "vegafusion>=2.0.2",
-    "vl-convert-python>=1.7.0",
+    "altair",
+    "vegafusion",
+    "vl-convert-python",
     # Notebook
-    "marimo[recommended]>=0.12.6",
+    "marimo[recommended]",
     # Typing
-    "mypy>=1.15.0",
-    "types-tqdm>=4.67.0.20250404",
-    "watchdog>=6.0.0",
-    "pytest>=8.3.5",
+    "mypy",
+    "types-tqdm",
+    "watchdog",
+    "pytest",
 ]
 
 [project.optional-dependencies]
 cpu = [
-  "torch>=2.6.0",
+  "torch",
 ]
 cuda = [
-  "torch>=2.6.0",
-  "triton>=3.2.0",
+  "torch",
 ]
 rocm = [
-  "torch>=2.6.0",
-  "pytorch-triton-rocm",
-  "triton>=3.2.0",
+  "torch",
 ]
 
 [tool.uv]
@@ -64,20 +60,21 @@ conflicts = [
 torch = [
   { index = "pytorch-cpu", extra = "cpu" },
   { index = "pytorch-cu124", extra = "cuda" },
-  { path = "/home/wsphil/projects/pytorch_rocm/wheels/torch-2.6.0-rocm6.3.3-py12/repack/torch-2.6.0+rocm6.3.3.git88b97641-cp312-cp312-linux_x86_64.whl", extra = "rocm" },
+  { index = "pytorch-rocm63", extra = "rocm" },
 ]
-pytorch-triton-rocm = { path = "/home/wsphil/projects/pytorch_rocm/wheels/torch-2.6.0-rocm6.3.3-py12/repack/pytorch_triton_rocm-3.2.0+rocm6.3.3.git6da9e660-cp312-cp312-linux_x86_64.whl", extra = "rocm" }
 flv-utils = { git = "ssh://git@github.com/flavell-lab/flv_utils" }
 
 [[tool.uv.index]]
 name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"
-explicit = true
 
 [[tool.uv.index]]
 name = "pytorch-cu124"
 url = "https://download.pytorch.org/whl/cu124"
-explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-rocm63"
+url = "https://download.pytorch.org/whl/rocm6.3"
 
 [tool.pytest.ini_options]
 addopts = [

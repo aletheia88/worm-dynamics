@@ -13,5 +13,5 @@ def test_attention_model_init():
 
 def test_attention_model_forward():
     model = AttentionModelMini()
-    fake_input = torch.zeros(1, 4, 1600)
+    fake_input = torch.zeros(2, 4, 512)
     model(fake_input)
