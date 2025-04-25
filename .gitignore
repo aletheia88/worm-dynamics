@@ -3,3 +3,4 @@
 .python-version
 uv.lock
 *.code-workspace
+__pycache__/
