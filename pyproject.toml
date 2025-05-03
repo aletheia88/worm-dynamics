@@ -80,3 +80,37 @@ url = "https://download.pytorch.org/whl/rocm6.3"
 addopts = [
     "--import-mode=importlib",
 ]
+
+[tool.ruff]
+exclude = [
+  "notebooks",
+  "scripts",
+  "old_tests",
+  "__pycache__",
+  ".bzr",
+  ".direnv",
+  ".eggs",
+  ".git",
+  ".git-rewrite",
+  ".hg",
+  ".ipynb_checkpoints",
+  ".mypy_cache",
+  ".nox",
+  ".pants.d",
+  ".pyenv",
+  ".pytest_cache",
+  ".pytype",
+  ".ruff_cache",
+  ".svn",
+  ".tox",
+  ".venv",
+  ".vscode",
+  "__pypackages__",
+  "_build",
+  "buck-out",
+  "build",
+  "dist",
+  "node_modules",
+  "site-packages",
+  "venv",
+]

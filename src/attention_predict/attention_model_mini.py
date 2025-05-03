@@ -1,7 +1,9 @@
+from re import I
 import torch
 from torch import Tensor
 import torch.nn as nn
 import einops
+from einops.layers.torch import Rearrange
 from .attention_mini import AttentionBlockMini
 from .unet import ConvBlock
 from typing import Callable, List, Tuple, Optional, Any
@@ -33,15 +35,16 @@ class AttentionModelMini(torch.nn.Module):
     encoder_features: List[Channels]
     decoder_features: List[Channels]
     depth: int
+    embedding_L: int
 
     def __init__(
         self,
-        depth: int = 3,
-        num_neurons: int = 4,
+        depth: int = 4,
+        num_neurons: int = 5,
         num_behaviors: int = 8,
         num_fmaps: int = 4,
         attention_scheme: tuple[str, str] = ("neurons", "behaviors"),
-        input_dims: tuple[int, int, int] = (2, 4, 512),
+        input_dims: tuple[int, int, int] = (2, 5, 512),
         fmap_inc_factor: int = 2,
         kernel_size: int = 3,
         padding: str = "same",
@@ -65,17 +68,17 @@ class AttentionModelMini(torch.nn.Module):
         self.inc_factor = fmap_inc_factor
         self.depth = depth
         self.encoder_features = self.encoder_pass_features(depth)
-        self.decoder_features = self.decoder_pass_features(depth - 1)
+        self.decoder_features = self.decoder_pass_features(depth)
 
-        downsampled_length = L // (2 ** (depth - 1))
-        embedding_length = downsampled_length * (
-            self.encoder_features[-1].output // self.num_encoders
-        )
-
+        # NOTE embedding length is invariant across Unet levels
+        # as long as: fmap_inc_factor == downsample_factor
+        embedding_length = (self.encoder_features[0].output // self.num_encoders) * L
+        self.embedding_L = embedding_length
         self.skip_connections = []
-        for layer in range(depth):
-            channels_out = self.encoder_features[layer].output
-            level_output = torch.zeros(N, channels_out, L // 2**layer)
+        for level in range(depth - 1):
+            level_output = torch.zeros(
+                N, self.encoder_features[level].output, L // (2**level)
+            )
             self.skip_connections.append(level_output)
 
         # Attention block
@@ -84,6 +87,9 @@ class AttentionModelMini(torch.nn.Module):
             (self.num_encoders, self.num_decoders),  # Attention scheme
             self.input_dims,
         )
+
+        downsample = nn.MaxPool1d(downsample_factor)
+        upsample = nn.Upsample(scale_factor=downsample_factor, mode=upsample_mode)
 
         self.model = nn.Sequential()
 
@@ -96,23 +102,35 @@ class AttentionModelMini(torch.nn.Module):
                 padding=padding,
                 num_groups=self.num_encoders,
             )
-            # Forward pass hook to apply and cache attention block output
-            # If lowest level, return attention block output instead of caching
-            conv_block.register_forward_hook(self.generate_output_hook(level))
-            self.model.append(conv_block)
+            # After each convolution, independently apply and cache the result of
+            # attention blocks for later use during the decoder pass before downsampling.
+            if level < depth - 1:
+                conv_forked_attention = self.add_attention_hook(
+                    conv_block, features.output, level
+                )
+                self.model.append(conv_forked_attention)
+                self.model.append(downsample)
 
-            # Don't downsample after last convolution...
-            if level < (depth - 1):
-                self.model.append(nn.MaxPool1d(downsample_factor))
+            else:  # on the lowest layer...
+                # Send attention block output to the subsequent
+                # decoder pass (without forking) and do not downsample the result.
+                self.model.append(conv_block)
+                self.model.append(self.attention_block)
+                self.model.append(
+                    Rearrange(
+                        "N n_enc (feats L) -> N (n_enc feats) L",
+                        feats=features.output // self.num_encoders,
+                        n_enc=self.num_encoders,
+                    )
+                )
 
-        # Build decoder pass--the first input is attention_block(lowest_encoder_convblock)
-        # so we jump immediately to (last_layer - 1) working from lowest to highest level
-        for level, features in enumerate(self.decoder_features):
-            upsample = nn.Upsample(scale_factor=downsample_factor, mode=upsample_mode)
-            # Forward pass hook to hcat upsampled result with attention_block output at current level
-            upsample.register_forward_hook(self.generate_input_hook(level))
-            self.model.append(upsample)
-            # Finally, feed concatenated result to next conv block
+        # Continue sequential/chain with decoder pass
+        for level in reversed(range(1, depth)):
+            # Hook to concatenate skip connection with upsampled input
+            upsample_concat = self.add_concat_hook(upsample, level)
+            self.model.append(upsample_concat)
+            # Decoder block
+            features = self.decoder_features[level - 1]
             self.model.append(
                 ConvBlock(
                     features.input,
@@ -122,97 +140,87 @@ class AttentionModelMini(torch.nn.Module):
                     num_groups=self.num_encoders,
                 )
             )
-        # Output convolution
-        # TODO: We may have to vmap and use independent convolutional blocks here since
-        # input + output channels might not be an integer multiple of groups=num_decoders
-        self.model.append(
-            nn.Conv1d(
-                # Conv input matched to last [-1] output
-                self.encoder_features[-1].output,
-                self.num_decoders,
-                1,
-                padding=0,
-                groups=self.num_decoders,  # might not work in this particular case
-            )
-        )
-        self.model.append(final_act)
+        ## Output convolution
+        ## TODO: We may have to vmap and use independent convolutional blocks here since
+        ## input + output channels might not be an integer multiple of groups=num_decoders
+        # self.model.append(
+        #    nn.Conv1d(
+        #        # Conv input matched to last [-1] output
+        #        self.decoder_features[-1].output,
+        #        self.num_decoders,
+        #        1,
+        #        padding=0,
+        #        groups=self.num_decoders,  # might not work in this particular case
+        #    )
+        # )
+        # self.model.append(final_act)
 
     def forward(self, inputs) -> Tensor:
         return self.model(inputs)  # 😂
 
     def encoder_fmap(self, level: int) -> Channels:
-        fmaps_in = self.num_encoders * (
-            1 if level == 0 else self.num_fmaps * self.inc_factor ** (level - 1)
+        fmaps_in = (
+            self.num_encoders
+            if level == 0
+            else self.num_encoders * (self.num_fmaps * self.inc_factor ** (level - 1))
         )
         fmaps_out = self.num_encoders * (self.num_fmaps * self.inc_factor**level)
         return Channels(int(fmaps_in), int(fmaps_out))
 
     def decoder_fmap(self, level: int) -> Channels:
-        # NOTE: This could be simplified by just referencing previously
-        # calculated encoder pass features...probably a recursive pattern
-        # AFAIK the number of decoders doesn't matter until the very last
-        # "output" convolutional block.
-        fmaps_out = self.num_encoders * (self.num_fmaps * self.inc_factor**level)
-        concat_fmaps = self.encoder_fmap(level).output
-        fmaps_in = self.num_encoders * (
-            concat_fmaps + (self.num_fmaps * self.inc_factor ** (level + 1))
-        )
-        return Channels(int(fmaps_in), int(fmaps_out))
+        feats_out = self.encoder_fmap(level).output
+        prev_level_out = self.encoder_fmap(level + 1).output
+        feats_in = feats_out + prev_level_out
+        return Channels(int(feats_in), int(feats_out))
 
-    def encoder_pass_features(self, depth: int) -> list[Channels]:
+    def encoder_pass_features(self, depth: int) -> List[Channels]:
         return [self.encoder_fmap(level) for level in range(depth)]
 
-    def decoder_pass_features(self, depth: int) -> list[Channels]:
-        return [self.decoder_fmap(level) for level in reversed(range(1, depth))]
+    def decoder_pass_features(self, depth: int) -> List[Channels]:
+        return [self.decoder_fmap(level) for level in range(depth - 1)]
 
-    def generate_output_hook(
-        self, level: int
-    ) -> Callable[[nn.Module, Tuple[Any, ...], Any], Optional[Any]]:
-        # If we are on the lowest level we will return: attention_block(conv_block_output)
-        if level == (self.depth - 1):
-            # TODO: potentially use einops layers and make + execute a nn.Sequential
-            def attention_out(
-                _module: nn.Module, _args: Tuple[Tensor], output: Tensor
-            ) -> Tensor:
-                V = einops.rearrange(
-                    torch.clone(output),
-                    "N (c_out enc) L -> N enc (c_out L)",
-                    enc=self.num_encoders,
+    def add_attention_hook(
+        self, conv_block: ConvBlock, features_out: int, level: int
+    ) -> ConvBlock:
+        # TODO: Add more value assignments to the Rearrange layer
+        # It is not strictly necessary, but provides an implicit runtime assertion
+
+        def cache_attention(
+            module: nn.Module, args: Tuple[Tensor], output: Tensor
+        ) -> None:
+            attn_input = einops.rearrange(
+                output,
+                "N (n_enc feats) L -> N n_enc (feats L)",
+                n_enc=self.num_encoders,
+            )
+            attn_out = self.attention_block(attn_input)
+            assert attn_out.shape == attn_input.shape, (
+                "Output was shape {aout}, but expected shape was {ain}".format(
+                    aout=attn_out.shape, ain=attn_input.shape
                 )
+            )
+            reshaped = einops.rearrange(
+                attn_out,
+                "N n_enc (feats L) -> N (n_enc feats) L",
+                feats=features_out // self.num_encoders,
+                n_enc=self.num_encoders,
+            )
+            self.skip_connections[level] = reshaped
 
-                return self.attention_block(V)
+        conv_block.register_forward_hook(cache_attention)
+        return conv_block
 
-            return attention_out
-        # Otherwise conv output is unmodified and we _cache_ attention block output for later
-        else:
+    def add_concat_hook(self, layer: nn.Upsample, level: int) -> nn.Upsample:
+        def cat_inputs(
+            module: nn.Module, args: Tuple[Tensor], upsampled: Tensor
+        ) -> Tensor:
+            next_level = level - 1
+            next_level_input = self.skip_connections[next_level]
+            concatenated_input = torch.cat([next_level_input, upsampled], 1)
+            return concatenated_input
 
-            def cache_attention(
-                module: nn.Module, args: Tuple[Tensor], output: Tensor
-            ) -> None:
-                V = einops.rearrange(
-                    torch.clone(output),
-                    "N (c_out enc) L -> N enc (c_out L)",
-                    enc=self.num_encoders,
-                )
-
-                self.skip_connections[level] = self.attention_block(V)
-
-            return cache_attention
-
-    def generate_input_hook(
-        self, level: int
-    ) -> Callable[[nn.Module, Tuple[Any, ...], Any], Optional[Any]]:
-        def hook(module: nn.Module, args: Tuple[Tensor], output: Tensor) -> Tensor:
-            # Here the "output" argument is always the upsampled attention block output
-            # from the _previous_ level
-            N, C, _ = output.shape
-            # Reshape attention block output from _current_ level and concatenate with previous
-            # This will become input of next convolutional decoder block
-            skip_out = self.skip_connections[level]
-            skip_out = torch.reshape(skip_out, (N, C, -1))
-            return torch.cat([output, skip_out], dim=1)
-
-        return hook
+        layer.register_forward_hook(cat_inputs)
+        return layer
 
 
 if __name__ == "__main__":
