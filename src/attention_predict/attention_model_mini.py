@@ -97,45 +97,45 @@ class AttentionModelMini(torch.nn.Module):
     def forward(self, input: Tensor) -> Tensor:
         # Encoder pass
         # Level 0
-        x0 = self.encoders[0](input)
-        skip0 = self.attention_block(x0)
+        x = self.encoders[0](input)
+        skip0 = self.attention_block(x)
         skip0 = self.reshapes[0](skip0)
-        x0 = self.downsample(x0)
+        x = self.downsample(x)
 
         # Level 1
-        x1 = self.encoders[1](x0)
-        skip1 = self.attention_block(x1)
+        x = self.encoders[1](x)
+        skip1 = self.attention_block(x)
         skip1 = self.reshapes[1](skip1)
-        x2 = self.downsample(x1)
+        x = self.downsample(x)
 
         # Level 2
-        x2 = self.encoders[2](x2)
-        skip2 = self.attention_block(x2)
+        x = self.encoders[2](x)
+        skip2 = self.attention_block(x)
         skip2 = self.reshapes[2](skip2)
-        x3 = self.downsample(x2)
+        x = self.downsample(x)
 
         # Level 3 (bottom)
-        x3 = self.encoders[3](x3)
-        skip3 = self.attention_block(x3)
+        x = self.encoders[3](x)
+        skip3 = self.attention_block(x)
         skip3 = self.reshapes[3](skip3)
 
         # Decoder pass
         # Level 2
-        y2 = self.upsample(skip3)
-        y2 = torch.cat([y2, skip2], dim=1)
+        x = self.upsample(skip3)
+        x = torch.cat([x, skip2], dim=1)
 
-        y2 = self.decoders[0](y2)
+        x = self.decoders[0](x)
 
-        y1 = self.upsample(y2)
-        y1 = torch.cat([y1, skip1], dim=1)
-        y1 = self.decoders[1](y1)
+        x = self.upsample(x)
+        x = torch.cat([x, skip1], dim=1)
+        x = self.decoders[1](x)
 
-        y0 = self.upsample(y1)
-        y0 = torch.cat([y0, skip0], dim=1)
-        y0 = self.decoders[2](y0)
+        x = self.upsample(x)
+        x = torch.cat([x, skip0], dim=1)
+        x = self.decoders[2](x)
 
-        out: Tensor = self.conv_out(y0)
-        return out
+        x = self.conv_out(x)
+        return x 
 
     def feature_map(self, level: int, scale_factor: int, features_basis: int) -> Tensor:
         fmaps_in = 1 if level == 0 else features_basis * scale_factor ** (level - 1)
