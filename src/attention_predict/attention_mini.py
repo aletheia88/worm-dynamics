@@ -59,7 +59,6 @@ class AttentionBlock(nn.Module):
 
         out: Tensor = F.scaled_dot_product_attention(Q, K, V)
         out = self.remove_head_dim(out)  # output dims: (N, L_target, E_v)
-        assert out.shape[-1] == 2048
 
         return out
 

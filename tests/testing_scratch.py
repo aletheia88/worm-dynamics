@@ -16,100 +16,68 @@ def _():
     import torch
     import torch.nn as nn
     from attention_predict.attention_model_mini import AttentionModelMini
-    from attention_predict.attention_mini import AttentionBlock
     import torch.utils.benchmark as benchmark
-    return AttentionModelMini, benchmark, torch
+    import attention_predict.alicia.attention_model_mini as alicia
+    return AttentionModelMini, alicia, benchmark, torch
 
 
 @app.cell
-def _():
-    depth = 4
-    inc_factor = 2
-    num_fmaps = 4
-    num_encoders = 5
-    return depth, inc_factor, num_encoders, num_fmaps
+def _(torch):
+    device = torch.device("cuda")
+    num_encoders = 30
+    num_decoders = 20 
+    input_dims = (32, 30, 512)
+    return device, input_dims, num_decoders, num_encoders
 
 
 @app.cell
-def _(inc_factor, num_encoders, num_fmaps):
-    def ref_encoder_fmaps(level):
-        if level == 0:
-            fmaps_in = num_encoders
-        else:
-            fmaps_in = num_encoders * (num_fmaps * inc_factor ** (level - 1))
-
-        fmaps_out = num_encoders * (num_fmaps * inc_factor**level)
-        return fmaps_in, fmaps_out
-
-    return (ref_encoder_fmaps,)
-
-
-@app.cell
-def _(ref_encoder_fmaps):
-    def ref_decoder_fmaps(level, ref_encoder_fmaps=ref_encoder_fmaps):
-        # reduce input to same number of output channels as the encoder (at _same_ level)
-        fmaps_out = ref_encoder_fmaps(level)[1]  # NOTE: already scaled by num_encoders
-        # Num inputs from skip connection = outputs of encoder on previous/lower level (i.e. level + 1)
-        prev_level_out = ref_encoder_fmaps(level + 1)[1]
-        fmaps_in = fmaps_out + prev_level_out
-        return fmaps_in, fmaps_out
-
-    return (ref_decoder_fmaps,)
-
-
-@app.cell
-def _(depth, ref_decoder_fmaps, ref_encoder_fmaps):
-    def print_fmaps(depth):
-        for level in range(depth):
-            inp, out = ref_encoder_fmaps(level)
-            print(
-                "Reference encoder at level: {level}, I/O channels: ({inp},{out})".format(
-                    level=level, inp=inp, out=out
-                )
-            )
-
-        print("\n")
-
-        for level in range(depth - 1):
-            dec_inp, dec_out = ref_decoder_fmaps(level)
-            print(
-                "Reference decoder at level: {level}, I/O channels: ({inp},{out})".format(
-                    level=level, inp=dec_inp, out=dec_out
-                )
-            )
-
-    print_fmaps(depth)
-    return
-
-
-@app.cell
-def _(AttentionModelMini):
-    model = AttentionModelMini()
+def _(AttentionModelMini, input_dims, num_decoders):
+    model = AttentionModelMini(num_decoders, input_dims)
     print(model)
     return (model,)
 
 
 @app.cell
-def _(model, torch):
-    device = torch.device("cuda")
-    model.to(device)
-    return (device,)
+def _(alicia, num_decoders, num_encoders):
+    alicia_model = alicia.AttentionModelMini(
+        4, # depth
+        num_encoders, # num neurons
+        num_decoders, # num behaviors
+        "NfromB",
+        512,
+        device = 'cuda'
+    )
+    return (alicia_model,)
 
 
 @app.cell
-def _(device, model, torch):
+def _(alicia_model, device, model):
+    model.to(device)
+    model.compile(fullgraph=True, mode="max-autotune")
+    alicia_model.to(device)
+    return
 
-    fake_input = torch.rand(2, 5, 512).to(device)
+
+@app.cell
+def _(alicia_model, device, input_dims, model, torch):
+    fake_input = torch.rand(*input_dims).to(device)
     model(fake_input)
+    alicia_model(fake_input)
     return (fake_input,)
 
 
 @app.cell
-def _(benchmark, fake_input, model):
+def _(alicia_model, benchmark, fake_input, model):
     t0 = benchmark.Timer(
         stmt='model(fake_input)',
         globals={'fake_input': fake_input, 'model': model})
+
+    t1 = benchmark.Timer(
+        stmt='alicia_model(fake_input)',
+        globals={'fake_input': fake_input, 'alicia_model': alicia_model})
+
     print(t0.timeit(100))
+    print(t1.timeit(100))
     return
 
 
