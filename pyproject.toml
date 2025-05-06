@@ -29,10 +29,8 @@ dev = [
     # Notebook
     "marimo[recommended]",
     # Typing
-    "mypy",
     "types-tqdm",
     "watchdog",
-    "pytest",
 ]
 
 [project.optional-dependencies]

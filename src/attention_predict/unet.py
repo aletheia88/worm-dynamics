@@ -1,20 +1,5 @@
-# This script includes an implementation of the UNet model that is based on the version
-# available at:
-# https://github.com/dlmbl/unet/blob/c9753f92e40b0df969f21241b79ab375ffdb1ccc/solution.py
-#
-# Acknowledgments:
-# The original implementation of the UNet model was retrieved from the Deep Learning at
-# MBL (dlmbl) repository.
-# Significant portions of this script are either unchanged or modified versions of the
-# original code.
-# We extend our gratitude to the contributors of the dlmbl repository for making their
-# code available for reuse and adaptation.
-#
-# License Information:
-# The original code from which this script is derived is subject to the terms of the MIT
-# license, as stated in the repository.
-from torch import Tensor
 import torch.nn as nn
+from torch import Tensor
 
 
 class ConvBlock(nn.Module):
@@ -68,5 +53,6 @@ class ConvBlock(nn.Module):
             nn.ReLU(),
         )
 
-    def forward(self, x) -> Tensor:
-        return self.conv_pass(x)
+    def forward(self, x: Tensor) -> Tensor:
+        out: Tensor = self.conv_pass(x)
+        return out

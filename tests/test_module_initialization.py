@@ -1,6 +1,7 @@
+import torch
+
 from attention_predict.attention_model_mini import AttentionModelMini
 from attention_predict.unet import ConvBlock
-import torch
 
 
 def test_conv_block_init():
@@ -18,4 +19,4 @@ def test_attention_model_forward():
     print(model.encoder_features)
     print("Decoder features:")
     print(model.decoder_features)
-    # model(fake_input)
+    model(fake_input)

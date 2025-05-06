@@ -5,3 +5,7 @@ uv.lock
 *.code-workspace
 **/__pycache__
 notebooks
+.dmypy.json
+.ropeproject
+.pytest_cache
+.vscode

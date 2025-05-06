@@ -1,8 +1,6 @@
-
-
 import marimo
 
-__generated_with = "0.13.3"
+__generated_with = "0.13.4"
 app = marimo.App(width="full")
 
 
@@ -18,9 +16,9 @@ def _():
     import torch
     import torch.nn as nn
     from attention_predict.attention_model_mini import AttentionModelMini
-    from attention_predict.attention_mini import AttentionBlockMini
-
-    return AttentionBlockMini, AttentionModelMini
+    from attention_predict.attention_mini import AttentionBlock
+    import torch.utils.benchmark as benchmark
+    return AttentionModelMini, benchmark, torch
 
 
 @app.cell
@@ -92,26 +90,26 @@ def _(AttentionModelMini):
 
 
 @app.cell
-def _(model):
-    for i, chan in enumerate(model.encoder_features):
-        print(
-            "Encoder level {lvl} input: {inp}, output: {out}".format(
-                lvl=i, inp=chan.input, out=chan.output
-            )
-        )
-    for i, chan in enumerate(model.decoder_features):
-        print(
-            "Decoder level {lvl} input: {inp}, output: {out}".format(
-                lvl=i, inp=chan.input, out=chan.output
-            )
-        )
-
-    return
+def _(model, torch):
+    device = torch.device("cuda")
+    model.to(device)
+    return (device,)
 
 
 @app.cell
-def _(AttentionBlockMini):
-    att_block = AttentionBlockMini(2048, (5,8), (2,5,512))
+def _(device, model, torch):
+
+    fake_input = torch.rand(2, 5, 512).to(device)
+    model(fake_input)
+    return (fake_input,)
+
+
+@app.cell
+def _(benchmark, fake_input, model):
+    t0 = benchmark.Timer(
+        stmt='model(fake_input)',
+        globals={'fake_input': fake_input, 'model': model})
+    print(t0.timeit(100))
     return
 
 
