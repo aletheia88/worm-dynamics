@@ -10,14 +10,13 @@ class Head(torch.nn.Module):
         self.sqrt_dk = attention_dims['k'][1]**0.5
         self.attention_mask = attention_mask
 
-        # BfromN
         self.key_weights = torch.nn.ModuleList([
             torch.nn.Linear(
-                *attention_dims['w_k'], # (N, N)
+                *attention_dims['w_k'],  # (N, N)
                 bias=False
             ),
             torch.nn.Linear(
-                *attention_dims['k'], # (B, N)
+                *attention_dims['k'],  # (B, N)
                 bias=False
             )]
         ).to(device)
@@ -48,14 +47,17 @@ class Head(torch.nn.Module):
 
         for i, linear in enumerate(self.key_weights):
             key = linear(key)
-        weighted_key = key # keys shape: e.g., (N, B) for BfromN
+        weighted_key = key  # keys shape: e.g., (N, B) for BfromN
 
-        # attention_matrix shapes: (num_samples, B, N), (_, N, B), (_ , N, N), (_, B, B)
-        attention_matrix = (weighted_query @ weighted_key).transpose(1, 2) / self.sqrt_dk
+        # attention_matrix shapes:
+        # (num_samples, B, N), (_, N, B), (_ , N, N), (_, B, B)
+        attention_matrix = (weighted_query @ weighted_key).transpose(1, 2) \
+            / self.sqrt_dk
         # apply attention masking
         attention_matrix = attention_matrix.masked_fill(self.attention_mask,
                                                         float('-inf'))
-        attention_matrix = torch.nn.functional.softmax(attention_matrix, dim=-1)
+        attention_matrix = torch.nn.functional.softmax(
+                attention_matrix, dim=-1)
         attention_outputs = attention_matrix @ weighted_value
 
         return attention_outputs, attention_matrix
@@ -97,28 +99,51 @@ class AttentionBlockMini(torch.nn.Module):
 
         super().__init__()
 
+        if attention_scheme == 'connectome':
+            path = '/home/alicia/notebook/alicia/worm-dynamics/src/attention_predict'
+            connectivity_matrix = torch.tensor(
+                torch.load(f'{path}/connectome/connectivity_sum.pt'),
+                dtype=torch.bool,
+                device=device)
+
         attention_quadrants = {
             'nn': torch.eye(N, dtype=torch.bool, device=device),
             'bb': torch.zeros((B, B), dtype=torch.bool, device=device),
             'nb': torch.zeros((N, B), dtype=torch.bool, device=device),
             'bn': torch.zeros((B, N), dtype=torch.bool, device=device),
+            'cn': connectivity_matrix,
         }
 
         if attention_scheme == 'NfromN':
             attention_mask = attention_quadrants['nn']
-            attention_dims = {'k': (N, N), 'q': (N, N), 'w_k': (N, N), 'w_q': (N, N)}
-
-        elif attention_scheme == 'NfromB':
+            attention_dims = {
+                'k': (N, N), 'q': (N, N),
+                'w_k': (N, N), 'w_q': (N, N)
+            }
+        if attention_scheme == 'NfromB':
             attention_mask = attention_quadrants['nb']
-            attention_dims = {'k': (B, N), 'q': (B, B), 'w_k': (B, B), 'w_q': (B, B)}
-
-        elif attention_scheme == 'BfromN':
+            attention_dims = {
+                'k': (B, N), 'q': (B, B),
+                'w_k': (B, B), 'w_q': (B, B)
+            }
+        if attention_scheme == 'BfromN':
             attention_mask = attention_quadrants['bn']
-            attention_dims = {'k': (N, B), 'q': (N, N), 'w_k': (N, N), 'w_q': (N, N)}
-
-        elif attention_scheme == 'BfromB':
+            attention_dims = {
+                'k': (N, B), 'q': (N, N),
+                'w_k': (N, N), 'w_q': (N, N)
+            }
+        if attention_scheme == 'BfromB':
             attention_mask = attention_quadrants['bb']
-            attention_dims = {'k': (B, B), 'q': (B, B), 'w_k': (B, B), 'w_q': (B, B)}
+            attention_dims = {
+                'k': (B, B), 'q': (B, B),
+                'w_k': (B, B), 'w_q': (B, B)
+            }
+        if attention_scheme == 'connectome':
+            attention_mask = attention_quadrants['cn']
+            attention_dims = {
+                'k': (N, N), 'q': (N, N),
+                'w_k': (N, N), 'w_q': (N, N)
+            }
 
         self.attention = MultiHeadAttention(
             attention_mask,

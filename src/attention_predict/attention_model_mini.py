@@ -35,15 +35,15 @@ class AttentionModelMini(torch.nn.Module):
             self.num_encoders = num_neurons
             self.num_decoders = num_behaviors
 
-        elif attention_scheme == 'NfromB':
+        if attention_scheme == 'NfromB':
             self.num_encoders = num_behaviors
             self.num_decoders = num_neurons
 
-        elif attention_scheme == 'NfromN':
+        if attention_scheme in ['NfromN', 'connectome']:
             self.num_encoders = num_neurons
             self.num_decoders = num_neurons
 
-        elif attention_scheme == 'BfromB':
+        if attention_scheme == 'BfromB':
             self.num_encoders = num_behaviors
             self.num_decoders = num_behaviors
 
