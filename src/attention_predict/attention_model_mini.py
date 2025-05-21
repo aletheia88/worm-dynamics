@@ -4,9 +4,11 @@ from .unet import Downsample, ConvBlock, OutputConv
 
 
 class AttentionModelMini(torch.nn.Module):
-    """A U-Net, but with a shared attention layer between any path connecting the
-    encoder and decoder (i.e., skip connections for the top levels and between the last
-    convolution and upsampling on the lowest level).
+
+    """
+    A U-Net with a shared attention layer between any path connecting the
+    encoder and decoder (i.e., skip connections for the top levels and between
+    the last convolution and upsampling on the lowest level).
     """
 
     def __init__(
@@ -147,23 +149,27 @@ class AttentionModelMini(torch.nn.Module):
 
             # lowest level of the U-Net
             conv_out = encoder[-1](layer_input)
-            level_outputs[self.depth - 1].append(conv_out.view(num_samples, 1, -1))
+            level_outputs[self.depth - 1].append(
+                    conv_out.view(num_samples, 1, -1))
 
         # level_outputs[level][i]: (num_samples, 1, embedding_dims)
 
         # concatenate level outputs of all variables
         for level in range(self.depth):
-            level_outputs[level] = torch.concatenate(level_outputs[level], axis=1)
+            level_outputs[level] = torch.concatenate(
+                    level_outputs[level], axis=1)
 
         ### attention block ###
         # attention_weights: (num_samples, num_inputs, num_inputs)
         # attention_outputs: (num_samples, num_inputs, embedding_dims)
         level_attention_outputs = []
         for level in range(self.depth):
-            attention_outputs, attention_weights = self.attention_block(level_outputs[level])
+            attention_outputs, attention_weights = self.attention_block(
+                    level_outputs[level])
             level_attention_outputs.append(attention_outputs)
 
-        # level_attention_outputs[level]: (num_samples, num_inputs, embedding_dims(level))
+        # level_attention_outputs[level]:
+        # (num_samples, num_inputs, embedding_dims(level))
 
         ### decoder block ###
         decoded_outputs = []
@@ -179,7 +185,9 @@ class AttentionModelMini(torch.nn.Module):
                 # level_input: (num_samples, 1, embedding_dims(level))
                 # if lowest level
                 if level == self.depth - 1:
-                    level_input = level_input.view(num_samples, self.compute_fmaps_encoder(level)[1], -1)
+                    level_input = level_input.view(
+                            num_samples,
+                            self.compute_fmaps_encoder(level)[1], -1)
                     prev_level_output = level_input
                     continue
 
@@ -187,7 +195,8 @@ class AttentionModelMini(torch.nn.Module):
                 level_input = level_input.view(num_samples, fmaps_out, -1)
                 upsampled = self.upsample(prev_level_output)
                 # concatenate channels
-                decoder_input = torch.concatenate([level_input, upsampled], axis=1)
+                decoder_input = torch.concatenate(
+                        [level_input, upsampled], axis=1)
                 prev_level_output = decoder[level](decoder_input)
 
             final_output = self.final_convs[i](prev_level_output)
@@ -199,16 +208,18 @@ class AttentionModelMini(torch.nn.Module):
 
     def compute_fmaps_encoder(self, level: int) -> tuple[int, int]:
 
-        """ Compute the number of input and output feature maps for
-        a conv block at a given level of the UNet encoder (left side).
+        """
+        Compute the number of input and output feature maps for a conv block at
+        a given level of the UNet encoder (left side).
 
         Args:
-            level (int): The level of the U-Net which we are computing
-            the feature maps for. Level 0 is the input level, level 1 is
-            the first downsampled layer, and level=depth - 1 is the bottom layer.
+            level (int): The level of the U-Net which we are computing the
+            feature maps for. Level 0 is the input level, level 1 is the first
+            downsampled layer, and level=depth - 1 is the bottom layer.
 
-        Output (tuple[int, int]): The number of input and output feature maps
-            of the encoder convolutional pass in the given level.
+        Output (tuple[int, int]):
+            The number of input and output feature maps of the encoder
+            convolutional pass in the given level.
         """
 
         if level == 0:
@@ -220,21 +231,26 @@ class AttentionModelMini(torch.nn.Module):
         return fmaps_in, fmaps_out
 
     def compute_fmaps_decoder(self, level: int) -> tuple[int, int]:
-        """Compute the number of input and output feature maps for a conv block
-        at a given level of the UNet decoder (right side). Note:
-        The bottom layer (depth - 1) is considered an "encoder" conv pass,
-        so this function is only valid up to depth - 2.
+
+        """
+        Compute the number of input and output feature maps for a conv block at
+        a given level of the UNet decoder (right side). Note: The bottom layer
+        (depth - 1) is considered an "encoder" conv pass, so this function is
+        only valid up to depth - 2.
 
         Args:
-            level (int): The level of the U-Net which we are computing
-            the feature maps for. Level 0 is the input level, level 1 is
-            the first downsampled layer, and level=depth - 1 is the bottom layer.
+            level (int): The level of the U-Net which we are computing the
+            feature maps for. Level 0 is the input level, level 1 is the first
+            downsampled layer, and level=depth - 1 is the bottom layer.
 
-        Output (tuple[int, int]): The number of input and output feature maps
-            of the decoder convolutional pass in the given level.
+        Output (tuple[int, int]):
+            The number of input and output feature maps of the decoder
+            convolutional pass in the given level.
         """
+
         fmaps_out = self.num_fmaps * self.fmap_inc_factor ** (level)
         concat_fmaps = self.compute_fmaps_encoder(level)[1]
         # The channels that come from the skip connection
-        fmaps_in = concat_fmaps + self.num_fmaps * self.fmap_inc_factor ** (level + 1)
+        fmaps_in = concat_fmaps + self.num_fmaps * \
+            self.fmap_inc_factor ** (level + 1)
         return fmaps_in, fmaps_out
