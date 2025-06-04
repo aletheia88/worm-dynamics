@@ -138,11 +138,21 @@ class AttentionBlockMini(torch.nn.Module):
                 'k': (B, B), 'q': (B, B),
                 'w_k': (B, B), 'w_q': (B, B)
             }
-        if attention_scheme == 'connectome':
+        if attention_scheme in [
+            'connectome',
+            'anticonnectome',
+            'randconnectome'
+        ]:
             attention_mask = attention_quadrants['cn']
             attention_dims = {
                 'k': (N, N), 'q': (N, N),
                 'w_k': (N, N), 'w_q': (N, N)
+            }
+        if attention_scheme == '1fromN':
+            attention_mask = attention_quadrants['1n']
+            attention_dims = {
+                'k': (N-1, 1), 'q': (N-1, N-1),
+                'w_k': (N-1, N-1), 'w_q': (N-1, N-1)
             }
 
         self.attention = MultiHeadAttention(

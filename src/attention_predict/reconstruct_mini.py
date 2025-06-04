@@ -63,6 +63,7 @@ def reconstruct_traces(
     num_neurons,
     num_behaviors,
     device,
+    target_index=None,
     max_length=1600,
     window_size=400
 ):
@@ -93,6 +94,27 @@ def reconstruct_traces(
     neuron_indices = list(range(num_neurons))
     behavior_indices = list(range(num_neurons, num_neurons + num_behaviors))
 
+    if attention_scheme == '1fromN':
+        input_indices = neuron_indices[:target_index] + neuron_indices[target_index+1:]
+        output_indices = [target_index]
+
+    if attention_scheme == 'BfromN':
+        input_indices = neuron_indices
+        output_indices = behavior_indices
+
+    if attention_scheme == 'NfromB':
+        input_indices = behavior_indices
+        output_indices = neuron_indices
+
+    if attention_scheme in [
+            'NfromN',
+            'connectome',
+            'anticonnectome',
+            'randconnectome'
+    ]:
+        input_indices = neuron_indices
+        output_indices = neuron_indices
+
     for i, (inputs, worm, start_frame, end_frame, ds) in tqdm(enumerate(dataloader)):
 
         append = False
@@ -111,16 +133,8 @@ def reconstruct_traces(
             right_slider = 0
 
         if append:
-
-            if attention_scheme == 'BfromN':
-                outputs, attention_weights = model(inputs[:, neuron_indices, :])
-                targets = inputs[:, behavior_indices, :]
-            elif attention_scheme == 'NfromB':
-                outputs, attention_weights = model(inputs[:, behavior_indices, :])
-                targets = inputs[:, neuron_indices, :]
-            elif attention_scheme == 'NfromN':
-                outputs, attention_weights = model(inputs[:, neuron_indices, :])
-                targets = inputs[:, neuron_indices, :]
+            outputs, attention_weights = model(inputs[:, input_indices, :])
+            targets = inputs[:, output_indices, :]
 
             mask_outcomes = reconstructed_traces[worm_index]
             mask_outcomes['inputs'].append(inputs.cpu().detach().numpy())
