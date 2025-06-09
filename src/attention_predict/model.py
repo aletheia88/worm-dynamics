@@ -17,7 +17,6 @@ from .components import (  # , EncoderBlock, DecoderBlock
 )
 
 
-# NOTE: Could also use a named tuple, but this provides type annotations for fields
 class Channels:
     input: int
     output: int

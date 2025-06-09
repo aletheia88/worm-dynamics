@@ -9,3 +9,4 @@ notebooks
 .ropeproject
 .pytest_cache
 .vscode
+.zed

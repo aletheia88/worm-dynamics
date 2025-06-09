@@ -147,6 +147,7 @@ class ConvSkip(nn.Module):
         self.conv_block = ConvBlock(
             in_channels, out_channels, num_groups, kernel_size, padding
         )
+        return
 
     def forward(self, inputs: Tuple[Tensor, List[Tensor]]) -> Tuple[Tensor, List[Tensor]]:
         x, skip_connections = inputs
