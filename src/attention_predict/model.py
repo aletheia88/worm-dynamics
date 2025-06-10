@@ -6,15 +6,7 @@ import torch.nn as nn
 # from einops.layers.torch import Rearrange
 from torch import Tensor
 
-from .components import (  # , EncoderBlock, DecoderBlock
-    AttentionBlock,
-    ConvBlock,
-    ConvOutSkip,
-    ConvSkip,
-    DecoderSkip,
-    DownsampleSkip,
-    ReshapeSkip,
-)
+from .components import AttentionBlock, ConvBlock  # , EncoderBlock, DecoderBlock
 
 
 class Channels:
@@ -66,7 +58,7 @@ class MiniAttentionModel(torch.nn.Module):
             depth,
         )
 
-        downsample = DownsampleSkip(scale_factor)
+        downsample = nn.MaxPool1d(scale_factor)
 
         # Encoder pass blocks
         for level, features in enumerate(encoder_features):
@@ -102,21 +94,19 @@ class MiniAttentionModel(torch.nn.Module):
         self.model = model
 
     def forward(self, x: Tensor) -> Tensor:
-        skip_connections: List[Tensor] = []
-        x = self.model((x, skip_connections))
-        ## Encoder pass
-        # x, skip0 = self.encoders[0](x)
-        # x, skip1 = self.encoders[1](x)
-        # x, skip2 = self.encoders[2](x)
-        # _, x = self.encoders[3](x)
+        # Encoder pass
+        x, skip0 = self.encoders[0](x)
+        x, skip1 = self.encoders[1](x)
+        x, skip2 = self.encoders[2](x)
+        _, x = self.encoders[3](x)
 
-        ## Decoder pass
-        # x = self.decoders[0](x, skip2)
-        # x = self.decoders[1](x, skip1)
-        # x = self.decoders[2](x, skip0)
+        # Decoder pass
+        x = self.decoders[0](x, skip2)
+        x = self.decoders[1](x, skip1)
+        x = self.decoders[2](x, skip0)
 
-        ## Output convolution
-        # x = self.conv_out(x)
+        # Output convolution
+        x = self.conv_out(x)
         return x
 
     def feature_map(self, level: int, scale_factor: int, features_basis: int) -> Tensor:
