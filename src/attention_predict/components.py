@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import Tuple
 
 import einops
 import torch
@@ -102,20 +102,6 @@ class ConvBlock(nn.Module):
     def forward(self, input: Tensor) -> Tensor:
         out: Tensor = self.double_conv(input)
         return out
-
-
-class ReshapeSkip(nn.Module):
-    def __init__(self, features: int) -> None:
-        super().__init__()
-        self.reshape = Rearrange(
-            "N n_dec (feats L) -> N (n_dec feats) L",
-            feats=features,
-        )
-
-    def forward(self, inputs: Tuple[Tensor, List[Tensor]]) -> Tuple[Tensor, List[Tensor]]:
-        x, skip_connections = inputs
-        skip_connections[-1] = self.reshape(skip_connections[-1])
-        return x, skip_connections
 
 
 class EncoderBlock(nn.Module):

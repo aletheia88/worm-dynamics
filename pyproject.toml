@@ -10,27 +10,16 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "numpy",
-    # Data handling
-    "h5py",
-    "pyarrow",
     # Utils
     "tqdm",
-    "flv-utils",
     "jaxtyping",
     "einops",
 ]
 
 [dependency-groups]
 dev = [
-    # Interactive plotting
-    "altair",
-    "vegafusion",
-    "vl-convert-python",
-    # Notebook
-    "marimo[recommended]",
-    # Typing
     "types-tqdm",
-    "watchdog",
+    "ipykernel",
 ]
 
 [project.optional-dependencies]
@@ -58,7 +47,7 @@ conflicts = [
 torch = [
   { index = "pytorch-cpu", extra = "cpu" },
   { index = "pytorch-cu124", extra = "cuda" },
-  { index = "pytorch-rocm63", extra = "rocm" },
+  { index = "pytorch-rocm64-nightly", extra = "rocm" },
 ]
 flv-utils = { git = "ssh://git@github.com/flavell-lab/flv_utils" }
 
@@ -71,8 +60,8 @@ name = "pytorch-cu124"
 url = "https://download.pytorch.org/whl/cu124"
 
 [[tool.uv.index]]
-name = "pytorch-rocm63"
-url = "https://download.pytorch.org/whl/rocm6.3"
+name = "pytorch-rocm64-nightly"
+url = "https://download.pytorch.org/whl/nightly/rocm6.4"
 
 [tool.pytest.ini_options]
 addopts = [

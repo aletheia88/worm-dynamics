@@ -2,11 +2,10 @@ from typing import List, Tuple
 
 import torch
 import torch.nn as nn
-
-# from einops.layers.torch import Rearrange
+from einops.layers.torch import Rearrange
 from torch import Tensor
 
-from .components import AttentionBlock, ConvBlock  # , EncoderBlock, DecoderBlock
+from .components import AttentionBlock, ConvBlock, DecoderBlock, EncoderBlock
 
 
 class Channels:
@@ -18,10 +17,15 @@ class Channels:
         self.output = output
 
 
-class MiniAttentionModel(torch.nn.Module):
+class MiniAttentionModel(nn.Module):
     """A U-Net with an attention layer between any path connecting encoders and decoders
     (i.e. skip connections for each level and the bottleneck on the lowest level).
     """
+
+    attention_block: nn.Module
+    encoders: list[nn.Module]
+    decoders: list[nn.Module]
+    conv_out: nn.Module
 
     def __init__(
         self,
@@ -48,7 +52,6 @@ class MiniAttentionModel(torch.nn.Module):
         # NOTE embedding length is invariant across Unet levels
         E_v = (encoder_features[0].output // num_encoders) * window_length
 
-        model = nn.Sequential()
         # Attention block
         self.attention_block = AttentionBlock(
             E_v,
@@ -59,39 +62,40 @@ class MiniAttentionModel(torch.nn.Module):
         )
 
         downsample = nn.MaxPool1d(scale_factor)
+        self.decoders = []
+        self.encoders = []
 
         # Encoder pass blocks
         for level, features in enumerate(encoder_features):
             attention_out_features = decoder_features[level].output // num_decoders
-            model.append(ConvSkip(features.input, features.output, num_encoders))
-            model.append(self.attention_block)
-            model.append(ReshapeSkip(attention_out_features))
-            if level < (depth - 1):
-                model.append(downsample)
+            encoder = EncoderBlock(
+                self.attention_block,
+                ConvBlock(features.input, features.output, num_encoders),
+                Rearrange(
+                    "N n_dec (feats L) -> N (n_dec feats) L",
+                    feats=attention_out_features,
+                ),
+                downsample=downsample if level < (depth - 1) else nn.Identity(),
+            )
+            self.encoders.append(encoder)
 
         # Decoder pass blocks
         for level in reversed(range(depth - 1)):
             features = decoder_features[level]
-            model.append(
-                DecoderSkip(
-                    ConvBlock(features.input, features.output, num_groups=num_decoders),
-                    scale_factor,
-                )
+            decoder = DecoderBlock(
+                ConvBlock(features.input, features.output, num_groups=num_decoders),
+                scale_factor,
             )
+            self.decoders.append(decoder)
 
         # Output convolution
-        model.append(
-            ConvOutSkip(
-                nn.Conv1d(
-                    decoder_features[0].output,
-                    num_decoders,
-                    1,
-                    padding=0,
-                    groups=num_decoders,  # might not work in this particular case
-                )
-            )
+        self.conv_out = nn.Conv1d(
+            decoder_features[0].output,
+            num_decoders,
+            1,
+            padding=0,
+            groups=num_decoders,  # might not work in this particular case
         )
-        self.model = model
 
     def forward(self, x: Tensor) -> Tensor:
         # Encoder pass
