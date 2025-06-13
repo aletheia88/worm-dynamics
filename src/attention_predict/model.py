@@ -23,8 +23,8 @@ class MiniAttentionModel(nn.Module):
     """
 
     attention_block: nn.Module
-    encoders: list[nn.Module]
-    decoders: list[nn.Module]
+    encoders: nn.ModuleList
+    decoders: nn.ModuleList
     conv_out: nn.Module
 
     def __init__(
@@ -34,7 +34,7 @@ class MiniAttentionModel(nn.Module):
         input_dims: Tuple[int, int, int] = (2, 5, 512),
         depth: int = 4,
         features_basis: int = 4,
-        final_activation: nn.Module = nn.Identity(),
+        # final_activation: nn.Module = nn.Identity(),
     ) -> None:
         super().__init__()
 
@@ -62,8 +62,8 @@ class MiniAttentionModel(nn.Module):
         )
 
         downsample = nn.MaxPool1d(scale_factor)
-        self.decoders = []
-        self.encoders = []
+        self.decoders = nn.ModuleList()
+        self.encoders = nn.ModuleList()
 
         # Encoder pass blocks
         for level, features in enumerate(encoder_features):
@@ -98,16 +98,19 @@ class MiniAttentionModel(nn.Module):
         )
 
     def forward(self, x: Tensor) -> Tensor:
+        # Unrolled for depth = 5
         # Encoder pass
         x, skip0 = self.encoders[0](x)
         x, skip1 = self.encoders[1](x)
         x, skip2 = self.encoders[2](x)
-        _, x = self.encoders[3](x)
+        x, skip3 = self.encoders[3](x)
+        _, x = self.encoders[4](x)
 
         # Decoder pass
-        x = self.decoders[0](x, skip2)
-        x = self.decoders[1](x, skip1)
-        x = self.decoders[2](x, skip0)
+        x = self.decoders[0](x, skip3)
+        x = self.decoders[1](x, skip2)
+        x = self.decoders[2](x, skip1)
+        x = self.decoders[3](x, skip0)
 
         # Output convolution
         x = self.conv_out(x)
