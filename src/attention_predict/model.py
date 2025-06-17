@@ -97,7 +97,7 @@ class MiniAttentionModel(nn.Module):
             groups=num_decoders,  # might not work in this particular case
         )
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
         # Unrolled for depth = 5
         # Encoder pass
         x, skip0 = self.encoders[0](x)
@@ -114,7 +114,7 @@ class MiniAttentionModel(nn.Module):
 
         # Output convolution
         x = self.conv_out(x)
-        return x
+        return x, x # FIXME: placeholder second output just for parity with Alicia's original model
 
     def feature_map(self, level: int, scale_factor: int, features_basis: int) -> Tensor:
         fmaps_in = 1 if level == 0 else features_basis * scale_factor ** (level - 1)

@@ -2,15 +2,19 @@ from torch import Tensor
 from torch.utils.data import Dataset
 
 
-class SuffledWormData(Dataset):
+class ShuffledWormData(Dataset):
     data: Tensor
+    num_inputs: int
     window_stride: int
     window_size: int
     num_windows: int
     length: int
 
-    def __init__(self, data: Tensor, window_stride: int, window_size: int) -> None:
+    def __init__(
+        self, data: Tensor, num_inputs: int, window_stride: int, window_size: int
+    ) -> None:
         self.data = data
+        self.num_inputs = num_inputs
         num_worms, num_variables, num_frames = data.shape
         self.window_stride = window_stride
         self.window_size = window_size
@@ -20,8 +24,10 @@ class SuffledWormData(Dataset):
     def __len__(self) -> int:
         return self.length
 
-    def __getitem__(self, index: int) -> Tensor:
+    def __getitem__(self, index: int) -> tuple[Tensor, Tensor]:
         worm = index // self.num_windows
         start_frame = (index % self.num_windows) * self.window_stride
         end_frame = start_frame + self.window_size
-        return self.data[worm, :, start_frame:end_frame]
+        input = self.data[worm, : self.num_inputs, start_frame:end_frame]
+        output = self.data[worm, self.num_inputs :, start_frame:end_frame]
+        return input, output
