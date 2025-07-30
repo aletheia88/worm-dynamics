@@ -92,7 +92,8 @@ class UNet(torch.nn.Module):
                     fmaps_out,
                     self.kernel_size,
                     self.padding,
-                    ndim=self.unet_dim
+                    ndim=self.unet_dim,
+                    groups=1,
                 )
             )
 
@@ -108,7 +109,8 @@ class UNet(torch.nn.Module):
                     fmaps_out,
                     self.kernel_size,
                     self.padding,
-                    ndim=self.unet_dim
+                    ndim=self.unet_dim,
+                    groups=1
                 )
             )
 
@@ -177,14 +179,14 @@ class UNet(torch.nn.Module):
             conv_out = self.left_convs[i](layer_input)
             convolution_outputs.append(conv_out)
             downsampled = self.downsample(conv_out)
-            # print(f'left conv{i}: {conv_out.shape} -> {downsampled.shape}')
+            # print(f'left conv{i}: {layer_input.shape} -> {conv_out.shape} -> {downsampled.shape}')
             layer_input = downsampled
 
         conv_out = self.left_convs[-1](layer_input)
         layer_input = conv_out
         # print(f'bottle neck: {layer_input.shape}')
 
-        # right
+        # right side
         for i in range(0, self.depth - 1)[::-1]:
 
             upsampled = self.upsample(layer_input)
@@ -241,8 +243,9 @@ class ConvBlock(torch.nn.Module):
         in_channels: int,
         out_channels: int,
         kernel_size: int,
-        padding: str = "same",
-        ndim: int = 2,
+        padding: str,
+        ndim: int,
+        groups: int,
     ):
         """A convolution block for a U-Net. Contains two convolutions, each followed by
             a ReLU.
@@ -273,11 +276,21 @@ class ConvBlock(torch.nn.Module):
         convops = {1: torch.nn.Conv1d, 2: torch.nn.Conv2d, 3: torch.nn.Conv3d}
         self.conv_pass = torch.nn.Sequential(
             convops[ndim](
-                in_channels, out_channels, kernel_size=kernel_size, padding=padding
+                in_channels,
+                out_channels,
+                kernel_size=kernel_size,
+                padding=padding,
+                groups=groups,
+                bias=False,
             ),
             torch.nn.ReLU(),
             convops[ndim](
-                out_channels, out_channels, kernel_size=kernel_size, padding=padding
+                out_channels,
+                out_channels,
+                kernel_size=kernel_size,
+                padding=padding,
+                groups=groups,
+                bias=False,
             ),
             torch.nn.ReLU(),
         )
@@ -356,13 +369,19 @@ def center_crop(x, y):
 if __name__ == "__main__":
 
     depth = 5
-    in_channels = 5
-    out_channels = 5
+    in_channels = 2
+    out_channels = 1
     unet_dim = 1
     window_size = 400
     # (batch, channels, height, width)
     x = torch.rand(1, in_channels, window_size)
-    model = UNet(depth, in_channels, out_channels, unet_dim=unet_dim)
+    model = UNet(
+        depth,
+        in_channels,
+        out_channels,
+        unet_dim=unet_dim,
+        padding='same'
+    )
     y = model(x)
     print(f'output dim: {y.shape}')
 

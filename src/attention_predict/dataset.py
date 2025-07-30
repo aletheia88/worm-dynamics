@@ -122,30 +122,54 @@ class CElegansDatasetPlus(torch.utils.data.Dataset):
             ), worm, start_frame, end_frame - 1, self.datasets[worm]
 
 
+def _assign_sampling_weights(dataset):
+
+    num_windows_per_worm = (dataset.num_frames -
+                            dataset.window_size) // dataset.window_stride + 1
+    weights = np.empty(len(dataset), dtype=np.float32)
+
+    for idx in range(len(dataset)):
+        start_frame = idx % num_windows_per_worm
+        if 401 <= start_frame <= 800:
+            # group that was under-sampled → give *higher* weight
+            weights[idx] = 5      # any constant works; ratio matters
+        else:
+            weights[idx] = 1
+
+    return torch.as_tensor(weights)
+
+
 if __name__ == "__main__":
 
     device = "cuda:2"
-    window_stride = 400
+    window_stride = 1
     window_size = 400
     batch_size = 1
-    base = '/home/alicia/notebook/alicia/worm-dynamics'
-    ds_name = 'AVA_MC_SMDV_test'
+    base = '/store1/alicia/attention_predict/data'
+    ds_name = 'data0410_norm_valid'
     dataset = CElegansDatasetPlus(
-        f'{base}/data/{ds_name}.npy',
-        f'{base}/data/{ds_name}_ds.npy',
+        f'{base}/{ds_name}.npy',
+        f'{base}/{ds_name}_ds.npy',
         window_stride=window_stride,
         window_size=window_size,
         device=device,
         slices=slice(0, 1600)
     )
-    print(dataset.datasets)
+    sampling_weights = _assign_sampling_weights(dataset)
+    # print(sampling_weights[401:820])
+
+    # print(dataset.datasets)
     dataloader = torch.utils.data.DataLoader(
         dataset,
         batch_size=batch_size,
         shuffle=False
     )
-    mse_per_dataset = {ds: {col: [] for col in range(6)} for ds in dataset.datasets}
-    print(mse_per_dataset)
+    worm_index = 4
+    start_index_sample = 800
+    start_index = 4 * worm_index + start_index_sample // 400
+    print(dataloader.dataset[start_index])
+    # mse_per_dataset = {ds: {col: [] for col in range(6)} for ds in dataset.datasets}
+    # print(mse_per_dataset)
     # for n_iter, (inputs, worm, start_frame, end_frame, ds) in enumerate(dataloader):
     #     print(f'Iteration: {n_iter}')
     #     print(f'inputs: {inputs.shape}')
