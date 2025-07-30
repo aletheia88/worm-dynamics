@@ -69,7 +69,7 @@ class MultiHeadAttention(torch.nn.Module):
         self,
         attention_mask,
         embedding_dims,
-        attention_dims, # dimensions of K, Q, and their weights
+        attention_dims,  # dimensions of K, Q, and their weights
         num_heads,
         device
     ):
@@ -99,12 +99,24 @@ class AttentionBlockMini(torch.nn.Module):
 
         super().__init__()
 
+        path = '/home/alicia/notebook/alicia/worm-dynamics/src/attention_predict'
         if attention_scheme == 'connectome':
-            path = '/home/alicia/notebook/alicia/worm-dynamics/src/attention_predict'
             connectivity_matrix = torch.tensor(
-                torch.load(f'{path}/connectome/connectivity_sum.pt'),
+                torch.load(f'{path}/connectome/sum_connectivity.pt'),
                 dtype=torch.bool,
                 device=device)
+        elif attention_scheme == 'anticonnectome':
+            connectivity_matrix = torch.tensor(
+                torch.load(f'{path}/connectome/anti_connectivity.pt'),
+                dtype=torch.bool,
+                device=device)
+        elif attention_scheme == 'randconnectome':
+            connectivity_matrix = torch.tensor(
+                torch.load(f'{path}/connectome/random_connectivity.pt'),
+                dtype=torch.bool,
+                device=device)
+        else:
+            connectivity_matrix = None
 
         attention_quadrants = {
             'nn': torch.eye(N, dtype=torch.bool, device=device),
@@ -112,8 +124,8 @@ class AttentionBlockMini(torch.nn.Module):
             'nb': torch.zeros((N, B), dtype=torch.bool, device=device),
             'bn': torch.zeros((B, N), dtype=torch.bool, device=device),
             'cn': connectivity_matrix,
+            '1n': torch.zeros((1, N-1), dtype=torch.bool, device=device)
         }
-
         if attention_scheme == 'NfromN':
             attention_mask = attention_quadrants['nn']
             attention_dims = {
@@ -168,3 +180,41 @@ class AttentionBlockMini(torch.nn.Module):
         attention_outputs, attention_weights = self.attention(inputs)
 
         return attention_outputs, attention_weights
+
+
+class AttentionBlockFixed(torch.nn.Module):
+
+    """
+    Fix uniform attention scores for attending to all context variables, except
+    disabling attention to itself.
+    """
+
+    def __init__(
+        self,
+        embedding_dims,
+        N,
+        B,
+        attention_scheme,
+        perturb_index,
+        device,
+    ):
+        super().__init__()
+
+        if attention_scheme == 'NfromN':
+            self.attention = (1 - torch.eye(N, N)).to(device)
+            # self.attention = torch.ones((N, N), device=device)
+        if attention_scheme == 'NfromB':
+            self.attention = torch.ones((N, B), device=device)
+        if attention_scheme == 'BfromN':
+            self.attention = torch.ones((B, N), device=device)
+        if attention_scheme == 'perturb' and perturb_index != None:
+            self.attention = torch.zeros((N, N), device=device)
+            self.attention[:, perturb_index] = 1
+
+    def forward(self, embeddings):
+
+        num_samples = embeddings.shape[0]
+        # embeddings: (num_samples, num_context_variables, embeddings_dims)
+        attention_matrix = self.attention.unsqueeze(0).expand(num_samples, -1, -1)
+
+        return attention_matrix @ embeddings

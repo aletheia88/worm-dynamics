@@ -1,5 +1,5 @@
 import torch
-from .attention_mini import AttentionBlockMini
+from .attention_mini import AttentionBlockFixed
 from .unet import Downsample, ConvBlock, OutputConv
 
 
@@ -25,6 +25,7 @@ class AttentionModelMini(torch.nn.Module):
         downsample_factor: int = 2,
         upsample_mode: str = 'nearest',
         final_activation: torch.nn.Module | None = None,
+        perturb_index: int | None = None,
         device: str = 'cpu',
     ):
         super().__init__()
@@ -82,13 +83,20 @@ class AttentionModelMini(torch.nn.Module):
             for level in range(self.depth):
 
                 fmaps_in, fmaps_out = self.compute_fmaps_encoder(level)
+                # if level == 0:
+                #     groups = fmaps_in
+                # else:
+                #     groups = 1
+                # TODO: try setting groups=1 for all levels
+                groups = 1
                 encoder.append(
                     ConvBlock(
                         fmaps_in,
                         fmaps_out,
                         self.kernel_size,
                         self.padding,
-                        ndim=1
+                        ndim=1,
+                        groups=groups,
                     ).to(self.device)
                 )
             self.encoder_block.append(encoder)
@@ -98,11 +106,12 @@ class AttentionModelMini(torch.nn.Module):
 
         embedding_dims = self.length * self.channels
 
-        self.attention_block = AttentionBlockMini(
+        self.attention_block = AttentionBlockFixed(
             embedding_dims,
             num_neurons,
             num_behaviors,
             attention_scheme,
+            perturb_index,
             device=self.device
         )
 
@@ -119,7 +128,8 @@ class AttentionModelMini(torch.nn.Module):
                         fmaps_out,
                         self.kernel_size,
                         self.padding,
-                        ndim=1
+                        ndim=1,
+                        groups=1
                     ).to(self.device)
                 )
             self.decoder_block.append(decoder)
@@ -144,8 +154,8 @@ class AttentionModelMini(torch.nn.Module):
         ### encoder block ###
         for i in range(self.num_encoders):
 
-            layer_input = inputs[:, i, :].unsqueeze(1)
-
+            # inputs: (num_samples, num_variables * 2, window_size)
+            layer_input = inputs[:, i*2:i*2+2, :]
             # get the encoder for variable i
             encoder = self.encoder_block[i]
 
@@ -167,13 +177,15 @@ class AttentionModelMini(torch.nn.Module):
         for level in range(self.depth):
             level_outputs[level] = torch.concatenate(
                     level_outputs[level], axis=1)
+        # level_outputs after concatenation:
+        # (num_samples, num_context_variables, embeddings_dims)
 
-        ### attention block ###
+        ### attention block (fixed) ###
         # attention_weights: (num_samples, num_inputs, num_inputs)
         # attention_outputs: (num_samples, num_inputs, embedding_dims)
         level_attention_outputs = []
         for level in range(self.depth):
-            attention_outputs, attention_weights = self.attention_block(
+            attention_outputs = self.attention_block(
                     level_outputs[level])
             level_attention_outputs.append(attention_outputs)
 
@@ -213,7 +225,7 @@ class AttentionModelMini(torch.nn.Module):
 
         model_outputs = torch.cat(decoded_outputs, 1).to(self.device)
 
-        return model_outputs, attention_weights
+        return model_outputs
 
     def compute_fmaps_encoder(self, level: int) -> tuple[int, int]:
 
@@ -232,7 +244,7 @@ class AttentionModelMini(torch.nn.Module):
         """
 
         if level == 0:
-            fmaps_in = 1
+            fmaps_in = 2
         else:
             fmaps_in = self.num_fmaps * self.fmap_inc_factor ** (level - 1)
 
